@@ -43,10 +43,13 @@
       ]
     },
     {
-      "Sid": "AllowPullFromNorfolkProdPS2Account",
+      "Sid": "AllowPullFromNorfolkPS2Account",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::289460544715:role/norfolk/norfolk-ecs-instances-role"
+        "AWS": [
+          "arn:aws:iam::289460544715:role/norfolk/norfolk-ecs-instances-role",
+          "arn:aws:iam::414158246671:role/norfolk/norfolk-ecs-instances-role"
+        ]
       },
       "Action": [
         "ecr:BatchCheckLayerAvailability",
@@ -55,39 +58,13 @@
       ]
     },
     {
-      "Sid": "AllowPullFromNorfolkNonprodPS2Account",
+      "Sid": "AllowPushPullCentralJenkinsAgents",
       "Effect": "Allow",
       "Principal": {
-        "AWS": "arn:aws:iam::414158246671:role/norfolk/norfolk-ecs-instances-role"
-      },
-      "Action": [
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:BatchGetImage",
-        "ecr:GetDownloadUrlForLayer"
-      ]
-    },
-    {
-      "Sid": "AllowPushPullProdCentralJenkinsAgents",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::289460544715:role/jenkins/jenkins-prod-dpe"
-      },
-      "Action": [
-        "ecr:BatchCheckLayerAvailability",
-        "ecr:BatchGetImage",
-        "ecr:CompleteLayerUpload",
-        "ecr:DescribeImages",
-        "ecr:GetDownloadUrlForLayer",
-        "ecr:InitiateLayerUpload",
-        "ecr:PutImage",
-        "ecr:UploadLayerPart"
-      ]
-    },
-    {
-      "Sid": "AllowPushPullStageCentralJenkinsAgents",
-      "Effect": "Allow",
-      "Principal": {
-        "AWS": "arn:aws:iam::414158246671:role/jenkins/jenkins-staging-dpe"
+        "AWS": [
+          "arn:aws:iam::289460544715:role/jenkins/jenkins-prod-dpe",
+          "arn:aws:iam::414158246671:role/jenkins/jenkins-staging-dpe"
+        ]
       },
       "Action": [
         "ecr:BatchCheckLayerAvailability",

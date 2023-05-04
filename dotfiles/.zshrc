@@ -1,0 +1,1 @@
+/Users/margey.shah/.zshrc

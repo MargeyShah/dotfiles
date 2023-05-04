@@ -1,0 +1,1 @@
+/Users/margey.shah/.config/nvim//lua/plugconfig/indent-blankline.lua

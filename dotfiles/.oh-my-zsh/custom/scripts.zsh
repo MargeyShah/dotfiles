@@ -1,0 +1,1 @@
+/Users/margey.shah/.oh-my-zsh/custom/scripts.zsh

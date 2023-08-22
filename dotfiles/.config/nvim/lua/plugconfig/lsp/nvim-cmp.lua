@@ -1,1 +1,0 @@
-/Users/margey.shah/.config/nvim//lua/plugconfig/lsp/nvim-cmp.lua

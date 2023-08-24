@@ -1,3 +1,5 @@
+#!/bin/bash
+
 # This script will require a device that can run homebrew (https://brew.sh)
 # Installs homebrew to install other apps
 NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -47,12 +49,9 @@ echo 'eval "$(pyenv init -)"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
 
 source $HOME/.oh-my-zsh/custom/scripts.zsh
 
-pyenv install 3.11
-pyenv global 3.11
+pyenv install 3.11.4
+pyenv global 3.11.4
 
 pip install pipenv
 
 # Done, add zsh-autosuggestions to ~/.zshrc plugins, restart terminal.
-
-
-

@@ -16,12 +16,21 @@ echo "source \$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh
 brew install fzf
 $(brew --prefix)/opt/fzf/install
 
+# Node version manager
+brew install nvm
+
 # nvim
-brew install nvim
+cd /tmp
+xcode-select --install
+brew install ninja cmake gettext curl
+git clone https://github.com/neovim/neovim
+cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
+sudo make install
+cd -
 
-
-# Python, pyenv manages python versions, good with pipenv.
+# Python, pyenv manages python versions, good with poetry.
 brew install pyenv
+brew install poetry
 
 # Adds taps for devx-cli and frogger usage
 brew tap devproductivity/devx-cli git@github.prod.hulu.com:devproductivity/homebrew-devx-cli.git
@@ -38,6 +47,13 @@ brew install gh
 brew install devx-cli
 brew install frogger
 
+# Rust PKG Manager
+curl https://sh.rustup.rs -sSf | sh
+
+# QOL Mods
+cargo install tree-sitter-cli
+brew install dog, lsd, duf, gping, procs, zoxide, xh
+
 
 # Set zsh as default shell if it isn't already
 chsh -s $(which zsh)
@@ -52,6 +68,27 @@ source $HOME/.oh-my-zsh/custom/scripts.zsh
 pyenv install 3.11.4
 pyenv global 3.11.4
 
-pip install pipenv
+# NeoVim Configuration
+pyenv virtualenv 3.11.4 neovim3
+pyenv activate neovim3
+pipenv install neovim
+
+# Remove generated config/directories
+rm -rf $HOME/.oh-my-zsh
+rm $HOME/.zprofile
+rm $HOME/.zshrc
+
+# Setup directories if they don't exist
+mkdir -p $HOME/.config/nvim
+mkdir -p $HOME/.config/vim
+mkdir -p $HOME/.oh-my-zsh
+
+# Setup symlinks 
+cd ../dotfiles
+ln -s nvim/* $HOME/.config/nvim
+ln -s vim/.vimrc $HOME/.config/vim
+ln -s .oh-my-zsh/* $HOME/.oh-my-zsh
+ln -s .zprofile "$HOME/.zprofile"
+ln -s .zshrc "$HOME/.zshrc"
 
 # Done, add zsh-autosuggestions to ~/.zshrc plugins, restart terminal.

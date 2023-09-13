@@ -1,22 +1,24 @@
-#!/bin/bash
+#! /bin/zsh -
 
 dotfileSetup() {
   # Remove generated config/directories
-  rm -f ${HOME}/.zprofile
-  rm -f ${HOME}/.zshrc
-  rm -rf ${HOME}/.config/nvim
-  rm -rf ${HOME}/.config/vim
-  rm -rf ${HOME}/.config/kitty
+  sudo rm -f ${HOME}/.zprofile
+  sudo rm -f ${HOME}/.zshrc
+  sudo rm -rf ${HOME}/.config/nvim
+  sudo rm -rf ${HOME}/.config/vim
+  sudo rm -rf ${HOME}/.config/kitty
+  sudo rm -rf ${HOME}/.oh-my-zsh/custom/alias.zsh
+  sudo rm -rf ${HOME}/.oh-my-zsh/custom/scripts.zsh
 
   # Setup directories if they don't exist
   mkdir -p ${HOME}/.config/nvim
   mkdir -p ${HOME}/.config/vim
   mkdir -p ${HOME}/.config/kitty
-  mkdir -p ${HOME}/.oh-my-zsh
+  mkdir -p ${HOME}/.oh-my-zsh/custom
 
   # Setup symlinks 
   cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim ${HOME}/.config
-  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
   cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile
@@ -37,6 +39,8 @@ failedInstall(){
   sudo rm -f /root/.zshrc
   sudo rm -rf /root/.pyenv
   sudo rm -rf ${HOME}/install
+  sudo rm -rf ${HOME}/.oh-my-zsh/custom/alias.zsh
+  sudo rm -rf ${HOME}/.oh-my-zsh/custom/scripts.zsh
   sudo rm -rf ${HOME}/.pyenv
   sudo rm -rf ${HOME}/.local/state/nvim
   sudo rm -rf ${HOME}/.zprofile
@@ -55,7 +59,7 @@ PROJECT_DIR=${HOME}/.scripts
 PYENV_VERSION=3.11.4
 TEMP_DIR=${HOME}/tmp
 
-mkdir ${HOME}/tmp && cd ${TEMP_DIR}
+mkdir -p ${HOME}/tmp && cd ${TEMP_DIR}
 # This script will require a device that can run homebrew (https://brew.sh)
 # Installs homebrew to install other apps
 NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -67,8 +71,8 @@ curl -s "https://get.sdkman.io" | bash
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
 # oh-my-zsh plugins
-brew install zsh-autosuggestions
-#echo "source \$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" >> $HOME/.oh-my-zsh/custom/scripts.zsh
+git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlightingbrew 
 brew install fzf
 $(brew --prefix)/opt/fzf/install --all
 
@@ -114,11 +118,10 @@ brew install fd
 chsh -s $(which zsh)
 
 # Open pyenv 
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-echo 'eval "$(pyenv init -)"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-
-source $HOME/.oh-my-zsh/custom/scripts.zsh
+echo 'export PYENV_ROOT="${HOME}/.pyenv"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
+echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
+echo 'eval "$(pyenv init -)"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
+source ${HOME}/.oh-my-zsh/custom/scripts.zsh
 
 pyenv install ${PYENV_VERSION} 
 pyenv global ${PYENV_VERSION}
@@ -132,30 +135,21 @@ pipenv install neovim | sh
 curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 
 # Remove generated config/directories
-#rm -f  $HOME/.zprofile
-#rm -f $HOME/.zshrc
-#rm -rf $HOME/.config/nvim
-#rm -rf $HOME/.config/vim
-#rm -rf $HOME/.config/kitty
-#rm -rf $HOME/.oh-my-zsh
-
-# Setup directories if they don't exist
-#mkdir -p ${HOME}/.config/nvim
-#mkdir -p ${HOME}/.config/vim
-#mkdir -p ${HOME}/.config/kitty
-#mkdir -p ${HOME}/.oh-my-zsh
-
-# Setup symlinks 
 dotfileSetup
-#cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim  ${HOME}/.config
-#cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${HOME}/.config
-#cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config/kitty 
-#cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
-#cp -rs .zprofile ${HOME}/.zprofile
-#cp -rs .zshrc ${HOME}/.zshrc
 
-source .zprofile
-source .zshrc
+source ${HOME}/.zprofile
+source ${HOME}/.zshrc
+source ${HOME}/.oh-my-zsh/custom/scripts.zsh
+source ${HOME}/.oh-my-zsh/custom/alias.zsh
+
+# Add fonts for terminal emu
+cd ~/Library/Fonts && { 
+  wget https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
+  unzip NerdFontsSymbolsOnly.zip
+  rm readme.md
+  rm NerdFontsSymbolsOnly.zip
+}
+cd ${TEMP_DIR}
 
 # Setup Node Version Manager
 nvm install --lts
@@ -165,5 +159,7 @@ nvm use --lts
 npm install -g neovim
 
 sudo rm -rf ${TEMP_DIR}
-echo "You'll need to install the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
+echo "You'll need to validate the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
 echo "https://github.com/LunarVim/LunarVim for a potential new setup"
+
+# TODO: Investigate command collisions when replacing system commands. 

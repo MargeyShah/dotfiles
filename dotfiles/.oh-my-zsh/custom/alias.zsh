@@ -16,7 +16,6 @@ alias ps="procs"
 alias c='cd'
 alias ce="z"
 alias dig="dog"
-alias curl='xh "$@" --style monokai'
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
 

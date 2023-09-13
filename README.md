@@ -2,6 +2,8 @@
 
 Various scripts to automate tasks, simplify repetiive configuration, etc.
 
+Please make sure to clone this project directly into the HOME directory of the current user.
+
 If running locally ensure `export AWS_DEFAULT_PROFILE=HULU_SSO` is set.
 
 Handy links

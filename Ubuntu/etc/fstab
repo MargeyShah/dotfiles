@@ -1,3 +1,0 @@
-192.168.1.8:/volume1/myPlex /disks/pistachio/plex nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
-192.168.1.8:/volume1/cloud /disks/pistachio/cloud nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
-192.168.1.8:/volume1/oldbackup /disks/pistachio/oldbackups nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0

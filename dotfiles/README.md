@@ -1,6 +1,19 @@
-# VIM Guide
+# Dotfiles
+Prerequisites:
 
-## Normal Mode
+Nerd Font Installation:
+On Mac OS you will only need the following file from assets: [NerdFontsSymbolsOnly.zip](https://github.com/ryanoasis/nerd-fonts/releases)
+Unpack the zip and double click the font files to install them to the OS.
+Otherwise install based on the [documentation](https://github.com/ryanoasis/nerd-fonts#font-installation)
+
+Helpful documentation:
+[Kitty Terminal Emulator](https://sw.kovidgoyal.net/kitty/overview/)
+
+If on Mac OS you will only need the following 
+
+## VIM Guide
+
+### Normal (Command) Mode
 
 `i` - Insert mode
 
@@ -27,6 +40,12 @@
 `Ctrl + p` - fuzzy file search
 
 `A` - move to end of line and insert mode
+
+`$` - move to end of line and stay in normal (command) mode
+
+`^` or `0` - start of line, stay in normal mode
+
+`I` or `0i` - go to start of line in insert mode
 
 `o` - new line below and insert
 

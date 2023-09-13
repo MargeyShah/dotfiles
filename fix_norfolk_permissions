@@ -1,5 +1,0 @@
-ssh supermaster.prod.hulu.com << EOF
-	salt garage_group:5e4d129751e9bf00de490e07 cmd.run 'chown 1000:1000 /home/jenkins/workspace/';
-	salt garage_group:5e4d129751e9bf00de490e07 cmd.run 'chmod 775 /home/jenkins/workspace/';
-EOF
-

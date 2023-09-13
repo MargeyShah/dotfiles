@@ -2,7 +2,7 @@
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
 
 # Path to your oh-my-zsh installation.
-export ZSH="$HOME/.oh-my-zsh"
+export ZSH="$HOME/scripts/dotfiles/.oh-my-zsh"
 
 setopt hist_ignore_all_dups
 HISTFILE=~/.zsh_history

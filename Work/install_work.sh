@@ -47,13 +47,20 @@ brew install gh
 brew install devx-cli
 brew install frogger
 
-# Rust PKG Manager
+# Cargo - Rust PKG Manager
 curl https://sh.rustup.rs -sSf | sh
 
 # QOL Mods
 cargo install tree-sitter-cli
-brew install dog, lsd, duf, gping, procs, zoxide, xh
-
+cargo install du-dust
+brew install dog 
+brew install lsd
+brew install duf
+brew install gping
+brew install procs
+brew install zoxide
+brew install xh
+brew install fd
 
 # Set zsh as default shell if it isn't already
 chsh -s $(which zsh)
@@ -73,22 +80,41 @@ pyenv virtualenv 3.11.4 neovim3
 pyenv activate neovim3
 pipenv install neovim
 
+# Kitty (Terminal Emulator)
+curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+
 # Remove generated config/directories
-rm -rf $HOME/.oh-my-zsh
 rm $HOME/.zprofile
 rm $HOME/.zshrc
+rm -rf $HOME/.config/nvim
+rm -rf $HOME/.config/vim
+rm -rf $HOME/.config/kitty
+rm -rf $HOME/.oh-my-zsh
 
 # Setup directories if they don't exist
 mkdir -p $HOME/.config/nvim
 mkdir -p $HOME/.config/vim
+mkdir -p $HOME/.config/kitty
 mkdir -p $HOME/.oh-my-zsh
 
 # Setup symlinks 
 cd ../dotfiles
-ln -s nvim/* $HOME/.config/nvim
-ln -s vim/.vimrc $HOME/.config/vim
-ln -s .oh-my-zsh/* $HOME/.oh-my-zsh
+ln -s $HOME/scripts/dotfiles/.config/nvim/* "$HOME/.config/nvim"
+ln -s $HOME/scripts/dotfiles/.config/vim/* "$HOME/.config/vim"
+ln -s $HOME/scripts/.oh-my-zsh/* $HOME/.oh-my-zsh
+ln -s kitty/* $HOME/.config/kitty 
 ln -s .zprofile "$HOME/.zprofile"
 ln -s .zshrc "$HOME/.zshrc"
 
-# Done, add zsh-autosuggestions to ~/.zshrc plugins, restart terminal.
+source .zprofile
+source .zshrc
+
+# Setup Node Version Manager
+nvm install --lts
+nvm use --lts
+
+# Install Neovim NPM Package
+npm install -g neovim
+
+echo "You'll need to install the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
+echo "https://github.com/LunarVim/LunarVim for a potential new setup"

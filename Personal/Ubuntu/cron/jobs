@@ -1,3 +1,4 @@
 00 5    * * 1  reboot
 */5 *  * * *   docker ps -f health=unhealthy --format "docker restart {{.ID}}" | sh 
-0 0 * * *      rsync -avx --exclude jellyfin/ --exclude plexms/ --exclude lidarr/ --exclude snap/ --exclude go/ --exclude Downloads/ --exclude temp/ --exclude homeassis/ --exclude .dbus/ --exclude .local/ --exclude .cache/ --exclude .nvm/ --exclude .npm/ --exclude .ansbile/ --exclude .docker/ /home/margey/ margey@192.168.1.8:/volume1/NetBackup/$(hostname)
+0 0 * * *      rsync -avx --exclude jellyfin/ --exclude plexms/ --exclude lidarr/ --exclude snap/ --exclude go/ --exclude Downloads/ --exclude temp/ --exclude homeassis/ --exclude .dbus/ --exclude .local/ --exclude .cache/ --exclude .nvm/ --exclude .npm/ --exclude .ansbile/ --exclude .docker/ /home/margey/ margey@192.168.1.8:/volume1/NetBackup/$(hostname
+)

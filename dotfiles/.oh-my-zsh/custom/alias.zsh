@@ -13,12 +13,14 @@ alias ls="lsd"
 alias duf="df"
 alias ping="gping"
 alias ps="procs"
-alias cd="z"
+alias c='cd'
+alias ce="z"
 alias dig="dog"
 alias curl='xh "$@" --style monokai'
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
 
+eval "$(zoxide init zsh)"
 function run()
 {
 	for var in "$@"

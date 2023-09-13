@@ -7,7 +7,7 @@ isDesktop() {
   # Get GPG keys
   wget -O /usr/share/keyrings/element-io-archive-keyring.gpg https://packages.element.io/debian/element-io-archive-keyring.gpg
   
-  #‍ Add repo to apt list
+  # Add repo to apt list
   echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
 
   # Update apt repo list and install
@@ -159,9 +159,9 @@ dotfileSetup() {
 
   # Setup symlinks 
   cd ../../dotfiles
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim ${HOME}/.config/nvim
-  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config/vim
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config/kitty
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${HOME}/.config
+  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
   cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile
   cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${HOME}/.zshrc
@@ -303,9 +303,9 @@ sudo apt install build-essential procps curl \
 ### oh-my-zsh, better shell
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
 
-### oh-my-zsh plugins - zsh-autosuggestions, fzf
-git clone https://github.com/zsh-users/zsh-autosuggestions ${USER_DIR}/.zsh/zsh-autosuggestions
-#echo "source  ${USER_DIR}/.zsh/zsh-autosuggestions/zsh-autosuggestions.zsh" >> ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
+### oh-my-zsh plugins - zsh-autosuggestions, zsh-syntax, fzf
+git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
 sudo apt install -y fzf
 
 ### nvim - vim with plugins + config
@@ -315,6 +315,31 @@ cd build && cpack -G DEB && sudo dpkg -i nvim-linux64.deb
 
 ### rsync = backups, setup with cron to schedule
 sudo apt install rsync -y
+
+
+### Rust & Cargo PKG Manager
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+source ${HOME}/.cargo/env
+
+### Tweaks, QOL
+cargo install tree-sitter-cli
+cargo install procs
+cargo install du-dust
+cargo install gping
+cargo install lsd
+sudo apt install -y duf zoxide fd-find
+
+# Gping
+echo "deb http://packages.azlux.fr/debian/ buster main" | sudo tee /etc/apt/sources.list.d/azlux.list
+wget -qO - https://azlux.fr/repo.gpg.key | sudo apt-key add -
+sudo apt update
+
+# xh - curl but better
+curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
+
+# nerd fonts (for lsd)
+cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/UbuntuMonoNerdFont-Regular.ttf
+cd ${TEMP_DIR}
 
 ##############################################
 ### Python
@@ -372,5 +397,6 @@ else
     isServer
 fi
 
-echo "Done, add zsh-autosuggestions to ${USER_DIR}/.zshrc plugins, restart terminal."
+sudo rm -rf ${TEMP_DIR}
+echo "Done! Restart terminal."
 

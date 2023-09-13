@@ -1,5 +1,61 @@
 #!/bin/bash
 
+dotfileSetup() {
+  # Remove generated config/directories
+  rm -f ${HOME}/.zprofile
+  rm -f ${HOME}/.zshrc
+  rm -rf ${HOME}/.config/nvim
+  rm -rf ${HOME}/.config/vim
+  rm -rf ${HOME}/.config/kitty
+
+  # Setup directories if they don't exist
+  mkdir -p ${HOME}/.config/nvim
+  mkdir -p ${HOME}/.config/vim
+  mkdir -p ${HOME}/.config/kitty
+  mkdir -p ${HOME}/.oh-my-zsh
+
+  # Setup symlinks 
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
+  cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile
+  cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${HOME}/.zshrc
+}
+
+failedInstall(){
+  echo "Installation failed due to an error, clearing files"
+  sudo rm -f $(which nvim) 
+  sudo rm -rf ${HOME}/.zsh
+  sudo rm -rf ${HOME}/install
+  sudo rm -rf ${HOME}/.config/nvim
+  sudo rm -rf ${HOME}/.config/vim
+  sudo rm -f ${HOME}/.zcompdump
+  sudo rm -f ${HOME}/.viminfo
+  sudo rm -rf /root/.oh-my-zsh
+  sudo rm -rf /root/.local/state/nvim
+  sudo rm -f /root/.zshrc
+  sudo rm -rf /root/.pyenv
+  sudo rm -rf ${HOME}/install
+  sudo rm -rf ${HOME}/.pyenv
+  sudo rm -rf ${HOME}/.local/state/nvim
+  sudo rm -rf ${HOME}/.zprofile
+  sudo rm -rf ${HOME}/.zshrc
+  sudo rm -rf ${HOME}/.oh-my-zsh
+  sudo rm -rf ${HOME}/.viminfo
+  sudo rm -rf ${TEMP_DIR}
+  exit 1
+}
+
+# If script has an error, run cleanup.
+trap 'failedInstall' ERR
+
+# Variable Setup
+PROJECT_DIR=${HOME}/.scripts
+PYENV_VERSION=3.11.4
+TEMP_DIR=${HOME}/tmp
+
+mkdir ${HOME}/tmp && cd ${TEMP_DIR}
 # This script will require a device that can run homebrew (https://brew.sh)
 # Installs homebrew to install other apps
 NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
@@ -12,23 +68,24 @@ sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/too
 
 # oh-my-zsh plugins
 brew install zsh-autosuggestions
-echo "source \$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" >> $HOME/.oh-my-zsh/custom/scripts.zsh
+#echo "source \$HOMEBREW_PREFIX/share/zsh-autosuggestions/zsh-autosuggestions.zsh" >> $HOME/.oh-my-zsh/custom/scripts.zsh
 brew install fzf
-$(brew --prefix)/opt/fzf/install
+$(brew --prefix)/opt/fzf/install --all
 
 # Node version manager
 brew install nvm
 
 # nvim
-cd /tmp
-xcode-select --install
+# TODO: Find way to check for this, fails script if already installed
+#xcode-select --install
 brew install ninja cmake gettext curl
 git clone https://github.com/neovim/neovim
 cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
 sudo make install
-cd -
+cd ${TEMP_DIR}
 
 # Python, pyenv manages python versions, good with poetry.
+brew install pyenv-virtualenv # Needed for pyenv
 brew install pyenv
 brew install poetry
 
@@ -38,7 +95,8 @@ brew install kubectl
 brew install gh
 
 # Cargo - Rust PKG Manager
-curl https://sh.rustup.rs -sSf | sh
+curl https://sh.rustup.rs -sSf | sh -s -- -y
+source "${HOME}/.cargo/env"
 
 # QOL Mods
 cargo install tree-sitter-cli
@@ -62,11 +120,11 @@ echo 'eval "$(pyenv init -)"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
 
 source $HOME/.oh-my-zsh/custom/scripts.zsh
 
-pyenv install 3.11.4
-pyenv global 3.11.4
+pyenv install ${PYENV_VERSION} 
+pyenv global ${PYENV_VERSION}
 
 # NeoVim Configuration
-pyenv virtualenv 3.11.4 neovim3
+pyenv virtualenv ${PYENV_VERSION} neovim3
 pyenv activate neovim3 | sh
 pipenv install neovim | sh
 
@@ -74,27 +132,27 @@ pipenv install neovim | sh
 curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 
 # Remove generated config/directories
-rm $HOME/.zprofile
-rm $HOME/.zshrc
-rm -rf $HOME/.config/nvim
-rm -rf $HOME/.config/vim
-rm -rf $HOME/.config/kitty
-rm -rf $HOME/.oh-my-zsh
+#rm -f  $HOME/.zprofile
+#rm -f $HOME/.zshrc
+#rm -rf $HOME/.config/nvim
+#rm -rf $HOME/.config/vim
+#rm -rf $HOME/.config/kitty
+#rm -rf $HOME/.oh-my-zsh
 
 # Setup directories if they don't exist
-mkdir -p $HOME/.config/nvim
-mkdir -p $HOME/.config/vim
-mkdir -p $HOME/.config/kitty
-mkdir -p $HOME/.oh-my-zsh
+#mkdir -p ${HOME}/.config/nvim
+#mkdir -p ${HOME}/.config/vim
+#mkdir -p ${HOME}/.config/kitty
+#mkdir -p ${HOME}/.oh-my-zsh
 
 # Setup symlinks 
-cd ../dotfiles
-ln -s $HOME/scripts/dotfiles/.config/nvim/* "$HOME/.config/nvim"
-ln -s $HOME/scripts/dotfiles/.config/vim/* "$HOME/.config/vim"
-ln -s $HOME/scripts/.oh-my-zsh/* $HOME/.oh-my-zsh
-ln -s kitty/* $HOME/.config/kitty 
-ln -s .zprofile "$HOME/.zprofile"
-ln -s .zshrc "$HOME/.zshrc"
+dotfileSetup
+#cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim  ${HOME}/.config
+#cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${HOME}/.config
+#cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config/kitty 
+#cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
+#cp -rs .zprofile ${HOME}/.zprofile
+#cp -rs .zshrc ${HOME}/.zshrc
 
 source .zprofile
 source .zshrc
@@ -106,5 +164,6 @@ nvm use --lts
 # Install Neovim NPM Package
 npm install -g neovim
 
+sudo rm -rf ${TEMP_DIR}
 echo "You'll need to install the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
 echo "https://github.com/LunarVim/LunarVim for a potential new setup"

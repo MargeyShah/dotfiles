@@ -351,10 +351,6 @@ sudo apt install make libssl-dev zlib1g-dev \
  libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
 
 curl https://pyenv.run | bash
-echo 'export PYENV_ROOT="$HOME/.pyenv"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-echo 'eval "$(pyenv init -)"' >> $HOME/.oh-my-zsh/custom/scripts.zsh
-source $HOME/.oh-my-zsh/custom/scripts.zsh
 
 ### VSCode
 # Add GPG key

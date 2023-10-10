@@ -28,6 +28,13 @@ function run()
 	done
 }
 
+matrixup() {
+  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all
+}
+
+matrix() {
+  ssh margey@192.168.1.60
+}
 
 sshi(){
   ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"

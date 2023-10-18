@@ -9,16 +9,16 @@ dotfileSetup() {
   sudo rm -rf ${HOME}/.config/kitty
   sudo rm -rf ${HOME}/.oh-my-zsh/custom/alias.zsh
   sudo rm -rf ${HOME}/.oh-my-zsh/custom/scripts.zsh
-  
+
   # Setup directories if they don't exist
   mkdir -p ${HOME}/.config/nvim
   mkdir -p ${HOME}/.config/vim
   mkdir -p ${HOME}/.config/kitty
-  mkdir -p ${HOME}/.oh-my-zsh
+  mkdir -p ${HOME}/.oh-my-zsh/custom
 
   # Setup symlinks 
   cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim ${HOME}/.config
-  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
   cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile
@@ -51,12 +51,6 @@ failedInstall(){
   exit 1
 }
 
-backup(){
-    mkdir -p ${HOME}/backups
-    cp ${HOME}/.oh-my-zsh  ${HOME}/backups/.oh-my-zsh
-    cp ${HOME}/.ssh ${HOME}/backups/.ssh
-}
-
 # If script has an error, run cleanup.
 trap 'failedInstall' ERR
 
@@ -66,22 +60,19 @@ PYENV_VERSION=3.11.4
 TEMP_DIR=${HOME}/tmp
 
 mkdir -p ${HOME}/tmp && cd ${TEMP_DIR}
-
 # This script will require a device that can run homebrew (https://brew.sh)
 # Installs homebrew to install other apps
 NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-
 
 # Installs sdkman to install and manage multiple versions of SDKs.
 curl -s "https://get.sdkman.io" | bash
 
 # oh-my-zsh, better shell
 sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-backup
 
 # oh-my-zsh plugins
 git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlightingbrew 
 brew install fzf
 $(brew --prefix)/opt/fzf/install --all
 
@@ -89,7 +80,8 @@ $(brew --prefix)/opt/fzf/install --all
 brew install nvm
 
 # nvim
-xcode-select --install
+# TODO: Find way to check for this, fails script if already installed
+#xcode-select --install
 brew install ninja cmake gettext curl
 git clone https://github.com/neovim/neovim
 cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
@@ -97,23 +89,14 @@ sudo make install
 cd ${TEMP_DIR}
 
 # Python, pyenv manages python versions, good with poetry.
+brew install pyenv-virtualenv # Needed for pyenv
 brew install pyenv
 brew install poetry
 
-# Adds taps for devx-cli and frogger usage
-brew tap devproductivity/devx-cli git@github.prod.hulu.com:devproductivity/homebrew-devx-cli.git
-brew tap ced/homebrew-ced git@github.bamtech.co:ced/homebrew-ced.git
 
 # Install external tools
-brew install jfrog-cli
 brew install kubectl
-brew install awscli
 brew install gh
-
-
-# Install internal tools
-brew install devx-cli
-brew install frogger
 
 # Cargo - Rust PKG Manager
 curl https://sh.rustup.rs -sSf | sh -s -- -y
@@ -134,7 +117,7 @@ brew install fd
 # Set zsh as default shell if it isn't already
 chsh -s $(which zsh)
 
-# Load pyenv 
+# Open pyenv 
 echo 'export PYENV_ROOT="${HOME}/.pyenv"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
 echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
 echo 'eval "$(pyenv init -)"' >> ${HOME}/.oh-my-zsh/custom/scripts.zsh
@@ -146,8 +129,7 @@ pyenv global ${PYENV_VERSION}
 # NeoVim Configuration
 pyenv virtualenv ${PYENV_VERSION} neovim3
 pyenv activate neovim3 | sh
-pyenv install neovim | sh
-
+pipenv install neovim | sh
 
 # Kitty (Terminal Emulator)
 curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
@@ -177,5 +159,7 @@ nvm use --lts
 npm install -g neovim
 
 sudo rm -rf ${TEMP_DIR}
-echo "You'll need to install the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
+echo "You'll need to validate the latest nerd fonts (view the README.md for more info https://github.com/ryanoasis/nerd-fonts/releases)"
 echo "https://github.com/LunarVim/LunarVim for a potential new setup"
+
+# TODO: Investigate command collisions when replacing system commands. 

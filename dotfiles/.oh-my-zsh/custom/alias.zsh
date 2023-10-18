@@ -13,12 +13,13 @@ alias ls="lsd"
 alias duf="df"
 alias ping="gping"
 alias ps="procs"
-alias cd="z"
+alias c='cd'
+alias ce="z"
 alias dig="dog"
-alias curl='xh "$@" --style monokai'
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
 
+eval "$(zoxide init zsh)"
 function run()
 {
 	for var in "$@"
@@ -27,6 +28,13 @@ function run()
 	done
 }
 
+matrixup() {
+  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all
+}
+
+matrix() {
+  ssh margey@192.168.1.60
+}
 
 sshi(){
   ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"

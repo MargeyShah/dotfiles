@@ -18,7 +18,7 @@ dotfileSetup() {
 
   # Setup symlinks 
   cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim ${HOME}/.config
-  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
   cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
   cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile

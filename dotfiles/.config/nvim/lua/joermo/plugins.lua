@@ -29,7 +29,7 @@ require("lazy").setup({
     },
     { 'nvim-treesitter/nvim-treesitter' },
     { 'nvim-treesitter/playground' },
-    { 'theprimeagen/harpoon' },
+    -- { 'theprimeagen/harpoon' },
     { 'mbbill/undotree' },
     {
         'VonHeikemen/lsp-zero.nvim',

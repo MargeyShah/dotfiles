@@ -130,6 +130,7 @@ brew install procs
 brew install zoxide
 brew install xh
 brew install fd
+brew install pyenv-virtualenv
 
 # Set zsh as default shell if it isn't already
 chsh -s $(which zsh)

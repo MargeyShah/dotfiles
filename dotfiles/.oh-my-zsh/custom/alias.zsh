@@ -29,11 +29,12 @@ function run()
 }
 
 matrixup() {
-  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all
+  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all -K
+  ansible-playbook -i inventory/hosts $HOME/matrix-docker-ansible-deploy/inventory/host_vars/coturn.yml -K
 }
 
 matrix() {
-  ssh margey@192.168.1.60
+  ssh margey@192.168.1.26
 }
 
 sshi(){

@@ -18,3 +18,7 @@ export PYENV_ROOT="$HOME/.pyenv"
 command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
 
+if command -v wsl >/dev/null 2>&1; then
+    eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    echo "Running the shell code because 'wsl' command exists!"
+fi

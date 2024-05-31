@@ -1,7 +1,7 @@
 #!/bin/bash
 
 PYENV_VERSION=3.12.3
-ROOT_DIR =/root
+ROOT_DIR=/root
 isDesktop() {
   ##############################################
   ### Element Messenger
@@ -258,15 +258,21 @@ dotfileSetup() {
   rm -f ${USER_DIR}/.zprofile
   rm -f ${USER_DIR}/.zshrc
   rm -f ${USER_DIR}/.oh-my-zsh/custom/example.zsh
-  rm -f ${USER_DIR}/.oh-my-zsh/custom/app_inits.zsh
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/init_apps.zsh
   rm -f ${USER_DIR}/.oh-my-zsh/custom/config.zsh
   rm -f ${USER_DIR}/.oh-my-zsh/custom/work_config.zsh
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/wsl.zsh
   rm -rf ${USER_DIR}/.config/nvim
   rm -rf ${USER_DIR}/.config/vim
   rm -rf ${USER_DIR}/.config/kitty
   rm -rf ${USER_DIR}/.config/nvim
   rm -rf ${USER_DIR}/.oh-my-zsh/custom/resources
-  
+
+  sudo rm -f ${ROOT_DIR}/.zshrc
+  sudo rm -rf ${ROOT_DIR}/.config/vim
+  sudo rm -rf ${ROOT_DIR}/.config/nvim
+  sudo rm -rf ${ROOT_DIR}/.config/kitty
+
   # Setup directories if they don't exist
   mkdir -p ${USER_DIR}/.config/nvim
   mkdir -p ${USER_DIR}/.config/vim

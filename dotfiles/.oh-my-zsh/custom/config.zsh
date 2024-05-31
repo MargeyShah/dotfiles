@@ -19,7 +19,6 @@ alias dig="dog"
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
 
-eval "$(zoxide init zsh)"
 function run()
 {
 	for var in "$@"
@@ -37,10 +36,6 @@ matrix() {
   ssh margey@192.168.1.26
 }
 
-sshi(){
-  ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"
-}
-
-function ps2(){
- ssh -A $(cat ~/.oh-my-zsh/custom/ps2_bastions | fzf)
+function q(){
+ ssh $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
 }

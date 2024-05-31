@@ -1,5 +1,7 @@
 #!/bin/bash
 
+PYENV_VERSION=3.12.3
+ROOT_DIR =/root
 isDesktop() {
   ##############################################
   ### Element Messenger
@@ -116,7 +118,8 @@ isServer() {
   # Install SSH server for access                                                                                          
   sudo apt install openssh-server -y     
   systemctl enable ssh
-  systemctl start ssh                                                                                                     sudo systemctl enable ssh
+  systemctl start ssh                                                                                                     
+  sudo systemctl enable ssh
   sudo systemctl start ssh
   # Set key permissions
   chmod 600 ${USER_DIR}/.ssh/id_rsa
@@ -130,11 +133,6 @@ isServer() {
   # Set zsh as default shell if it isn't already
   chsh -s $(which zsh)
 
-  # Configure pyenv
-  echo 'export PYENV_ROOT="$HOME/.pyenv"' >> ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
-  echo 'command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"' >> ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
-  echo 'eval "$(pyenv init -)"' >> ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
-
   # Setup crontab using root user (crontab -e) (path is /var/spool/cron/crontabs/$USER)
   (sudo crontab -l -u root 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Ubuntu/cron/jobs ) | sudo crontab -u root -
 
@@ -143,28 +141,150 @@ isServer() {
   ##############################################
 }
 
+
+installGeneric() {
+
+    echo $USER_DIR
+    echo $TEMP_DIR
+
+    # Debugging (echo output) on
+    set -x
+
+    # Work in temp dir to handle temp downloads.
+    mkdir ${TEMP_DIR}
+    cd ${TEMP_DIR}
+
+    # Get updates, do updates
+    sudo apt update -y 
+    sudo apt upgrade -y
+
+    ##############################################
+    ### Shell & backup utiliies
+
+    # Install dependencies/basics
+    sudo apt install build-essential procps curl \
+    file gzip unzip wget cpio \
+    ca-certificates zsh \
+    apt-transport-https gnupg \
+    git gettext ninja-build \
+    cmake gpg  -y
+
+    ### oh-my-zsh, better shell
+    sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
+
+    # This script will require a device that can run homebrew (https://brew.sh)
+    # Installs homebrew to install other apps
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+
+    ### oh-my-zsh plugins - zsh-autosuggestions, zsh-syntax, fzf
+    git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+    git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
+    ~/.fzf/install
+
+    ### nvim - vim with plugins + config
+    git clone https://github.com/neovim/neovim
+    cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
+    cd build && cpack -G DEB && sudo dpkg -i nvim-linux64.deb
+
+    ### rsync = backups, setup with cron to schedule
+    sudo apt install rsync -y
+
+    ### Rust & Cargo PKG Manager
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    source ${HOME}/.cargo/env
+
+    ### Tweaks, QOL
+    cargo install tree-sitter-cli
+    cargo install procs
+    cargo install du-dust
+    cargo install gping
+    cargo install lsd
+    sudo apt install -y duf zoxide fd-find
+
+    # Gping
+    echo "deb http://packages.azlux.fr/debian/ buster main" | sudo tee /etc/apt/sources.list.d/azlux.list
+    wget -qO - https://azlux.fr/repo.gpg.key | sudo apt-key add -
+    sudo apt update
+
+    # xh - curl but better
+    curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
+
+    # nerd fonts (for lsd)
+    cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/UbuntuMonoNerdFont-Regular.ttf
+    cd ${TEMP_DIR}
+
+    ##############################################
+    ### Python
+
+    # Python, pyenv manages python versions, good with poetry.
+    # Install dependencies
+    sudo apt install make libssl-dev zlib1g-dev \
+    libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
+    libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
+
+    curl https://pyenv.run | bash
+
+    ### VSCode
+    # Add GPG key
+    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+    sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+
+    # Add apt repo to list
+    sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+    rm -f packages.microsoft.gpg
+
+    # Update apt repo list and install
+    sudo apt update
+    sudo apt install code # or code-insiders
+
+    ##############################################
+    ### Misc Configuration
+    # Show system specs in terminal                                                                                                    
+    brew install neofetch -y       
+
+    # Install pyenv and set default version.
+    pyenv install ${PYENV_VERSION}
+    pyenv global ${PYENV_VERSION}
+
+    # NeoViM PyEnv Configuration
+    pyenv virtualenv ${PYENV_VERSION} neovim3
+    pyenv activate neovim3 | sh
+    pyenv install neovim | sh
+}
+
 dotfileSetup() {
   # Remove generated config/directories
-  rm -f ${HOME}/.zprofile
-  rm -f ${HOME}/.zshrc
-  rm -rf ${HOME}/.config/nvim
-  rm -rf ${HOME}/.config/vim
-  rm -rf ${HOME}/.config/kitty
-
+  rm -f ${USER_DIR}/.zprofile
+  rm -f ${USER_DIR}/.zshrc
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/example.zsh
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/app_inits.zsh
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/config.zsh
+  rm -f ${USER_DIR}/.oh-my-zsh/custom/work_config.zsh
+  rm -rf ${USER_DIR}/.config/nvim
+  rm -rf ${USER_DIR}/.config/vim
+  rm -rf ${USER_DIR}/.config/kitty
+  rm -rf ${USER_DIR}/.config/nvim
+  rm -rf ${USER_DIR}/.oh-my-zsh/custom/resources
+  
   # Setup directories if they don't exist
-  mkdir -p ${HOME}/.config/nvim
-  mkdir -p ${HOME}/.config/vim
-  mkdir -p ${HOME}/.config/kitty
-  mkdir -p ${HOME}/.oh-my-zsh
+  mkdir -p ${USER_DIR}/.config/nvim
+  mkdir -p ${USER_DIR}/.config/vim
+  mkdir -p ${USER_DIR}/.config/kitty
+  mkdir -p ${USER_DIR}/.oh-my-zsh
 
   # Setup symlinks 
-  cd ../../dotfiles
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${HOME}/.config
-  cp -rs ${PROJECT_DIR}dotfiles/.config/vim ${HOME}/.config
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${HOME}/.config
-  cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${HOME}/.oh-my-zsh
-  cp -rs ${PROJECT_DIR}/dotfiles/.zprofile ${HOME}/.zprofile
-  cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${HOME}/.zshrc
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${USER_DIR}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${USER_DIR}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
+  cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${USER_DIR}/.oh-my-zsh
+  cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${USER_DIR}/.zshrc
+
+  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${ROOT_DIR}/.config
+  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${ROOT_DIR}/.config
+  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${ROOT_DIR}/.config
+  sudo cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
+  sudo cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
 }
 
 # Removes snap from Ubuntu entirely.
@@ -197,31 +317,32 @@ removeSnap() {
 }
 
 failedInstall(){
-  sudo rm -rf ${HOME}/.zsh
-  sudo rm -rf ${HOME}/install
-  sudo rm -rf ${HOME}/.config/nvim
-  sudo rm -rf ${HOME}/.config/vim
-  sudo rm -f ${HOME}/.zcompdump
-  sudo rm -f ${HOME}/.viminfo
-  sudo rm -rf /root/.oh-my-zsh
-  sudo rm -rf /root/.local/state/nvim
-  sudo rm -f /root/.zshrc
-  sudo rm -rf /root/.pyenv
-  sudo rm -rf ${HOME}/install
-  sudo rm -rf ${HOME}/.pyenv
-  sudo rm -rf ${HOME}/.local/state/nvim
-  sudo rm -rf ${HOME}/.zprofile
-  sudo rm -rf ${HOME}/.zshrc
-  sudo rm -rf ${HOME}/.oh-my-zsh
-  sudo rm -rf ${HOME}/.viminfo
+  sudo rm -rf ${USER_DIR}/.zsh
+  sudo rm -rf ${USER_DIR}/install
+  sudo rm -rf ${USER_DIR}/.config/nvim
+  sudo rm -rf ${USER_DIR}/.config/vim
+  sudo rm -f ${USER_DIR}/.zcompdump
+  sudo rm -f ${USER_DIR}/.viminfo
+  sudo rm -rf ${ROOT_DIR}/.oh-my-zsh
+  sudo rm -rf ${ROOT_DIR}/.local/state/nvim
+  sudo rm -f ${ROOT_DIR}/.zshrc
+  sudo rm -rf ${ROOT_DIR}/.pyenv
+  sudo rm -rf ${USER_DIR}/install
+  sudo rm -rf ${USER_DIR}/.pyenv
+  sudo rm -rf ${USER_DIR}/.local/state/nvim
+  sudo rm -rf ${USER_DIR}/.zprofile
+  sudo rm -rf ${USER_DIR}/.zshrc
+# sudo rm -rf ${USER_DIR}/.oh-my-zsh
+  sudo rm -rf ${USER_DIR}/.viminfo
   exit 1
 }
 
 # Function to display menu and get user's choice
 display_menu() {
-    echo "Select an option:"
+    echo "Select an option. Please note, this app will delete folders/files. Please make sure you've created a backup before continuing.:"
     echo "1. PC"
     echo "2. Server"
+    echo "3. Configure dotfiles"
     read -p "Enter your choice: " choice
 }
 
@@ -229,6 +350,8 @@ display_menu() {
 if [[ $# -eq 1 ]]; then
     optarg="$1"
     USER_DIR="/home/${optarg}"
+    PROJECT_DIR=${USER_DIR}/.scripts/
+    TEMP_DIR=${USER_DIR}/install
 else
     echo "Usage: $0 <username>"
     exit 1
@@ -243,6 +366,9 @@ fi
 trap 'failedInstall' ERR
 
 
+#####################################################
+#                App Starts here                    #
+#####################################################
 # Display menu and get user's choice
 display_menu
 
@@ -254,6 +380,9 @@ case $choice in
     2)
         echo "You selected: Server"
         ;;
+    3)
+        echo "You selected: Configure dotfiles"
+        ;;
     *)
         echo "Invalid choice"
         exit 1
@@ -263,134 +392,29 @@ esac
 # Ask user for confirmation
 read -p "Do you want to continue? (y/n): " confirm
 if [[ $confirm == "y" || $confirm == "Y" ]]; then
-    echo "Variable: $variable"
     echo "Script completed."
 else
     echo "Script aborted."
     exit 1
 fi
 
-# Configure variables
-PROJECT_DIR=${USER_DIR}/.scripts
-TEMP_DIR=${USER_DIR}/install
-PYENV_VERSION=3.11.4
 
-echo $USER_DIR
-echo $TEMP_DIR
-
-# Debugging (echo output) on
-set -x
-
-# Work in temp dir to handle temp downloads.
-mkdir ${TEMP_DIR}
-cd ${TEMP_DIR}
-
-# Get updates, do updates
-sudo apt update -y 
-sudo apt upgrade -y
-
-##############################################
-### Shell & backup utiliies
-
-# Install dependencies/basics
-sudo apt install build-essential procps curl \
- file gzip unzip wget cpio \
- ca-certificates zsh \
- apt-transport-https gnupg \
- git gettext ninja-build \
- cmake gpg  -y
-
-### oh-my-zsh, better shell
-sh -c "$(curl -fsSL https://raw.githubusercontent.com/ohmyzsh/ohmyzsh/master/tools/install.sh)" "" --unattended
-
-### oh-my-zsh plugins - zsh-autosuggestions, zsh-syntax, fzf
-git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
-git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
-sudo apt install -y fzf
-
-### nvim - vim with plugins + config
-git clone https://github.com/neovim/neovim
-cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
-cd build && cpack -G DEB && sudo dpkg -i nvim-linux64.deb
-
-### rsync = backups, setup with cron to schedule
-sudo apt install rsync -y
-
-
-### Rust & Cargo PKG Manager
-curl https://sh.rustup.rs -sSf | sh -s -- -y
-source ${HOME}/.cargo/env
-
-### Tweaks, QOL
-cargo install tree-sitter-cli
-cargo install procs
-cargo install du-dust
-cargo install gping
-cargo install lsd
-sudo apt install -y duf zoxide fd-find
-
-# Gping
-echo "deb http://packages.azlux.fr/debian/ buster main" | sudo tee /etc/apt/sources.list.d/azlux.list
-wget -qO - https://azlux.fr/repo.gpg.key | sudo apt-key add -
-sudo apt update
-
-# xh - curl but better
-curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
-
-# nerd fonts (for lsd)
-cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/UbuntuMonoNerdFont-Regular.ttf
-cd ${TEMP_DIR}
-
-##############################################
-### Python
-
-# Python, pyenv manages python versions, good with poetry.
-# Install dependencies
-sudo apt install make libssl-dev zlib1g-dev \
- libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
- libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
-
-curl https://pyenv.run | bash
-
-### VSCode
-# Add GPG key
-wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
-sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
-
-# Add apt repo to list
-sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
-rm -f packages.microsoft.gpg
-
-# Update apt repo list and install
-sudo apt update
-sudo apt install code # or code-insiders
-
-##############################################
-### Misc Configuration
-# Show system specs in terminal                                                                                                    
-sudo apt install neofetch -y       
-
-# Install pyenv and set default version.
-pyenv install ${PYENV_VERSION}
-pyenv global ${PYENV_VERSION}
-
-# NeoViM PyEnv Configuration
-pyenv virtualenv ${PYENV_VERSION} neovim3
-pyenv activate neovim3 | sh
-pyenv install neovim | sh
-
-# Setup dotfiles on install
-dotfileSetup
-# Remove snap from install
-removeSnap
 ##############################################
 
 if [[ $choice == "1" ]]; then
     echo "Running PC Specific installations."
+    installGeneric
     isDesktop
-else
+    dotfileSetup
+    removeSnap
+elif [[ $choice == "2" ]]; then
     echo "Running Server Specific installations."
+    installGeneric
     isServer
+    dotfileSetup
+    removeSnap
+else 
+    dotfileSetup
 fi
 
 sudo rm -rf ${TEMP_DIR}

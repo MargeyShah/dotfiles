@@ -3,18 +3,35 @@
 
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
-export PYTHONDONTWRITEBYTECODE=1
 
+# ignores duplicate history commands
 setopt hist_ignore_all_dups
+
+# Increase zsh command history
 HISTFILE=~/.zsh_history
 HISTSIZE=999999
 SAVEHIST=$HISTSIZE
 
-# Set name of the theme to load --- if set to "random", it will
-# load a random theme each time oh-my-zsh is loaded, in which case,
-# to know which specific one was loaded, run: echo $RANDOM_THEME
 # See https://github.com/ohmyzsh/ohmyzsh/wiki/Themes
 ZSH_THEME="robbyrussell"
+
+plugins=(
+	git
+	zsh-autosuggestions
+    zsh-syntax-highlighting
+)
+
+source $ZSH/oh-my-zsh.sh
+
+# can't move LS_COLORS to another file, breaks functionality. 
+# Fixes WSL2 folder coloring with LS.
+if [ -f "/etc/wsl.conf" ]; then
+	LS_COLORS="ow=01;36;40" && export LS_COLORS
+fi
+
+export LANG="en_US.UTF-8"
+export LC_ALL="en_US.UTF-8"
+export LC_CTYPE="en_US.UTF-8"
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -76,13 +93,7 @@ ZSH_THEME="robbyrussell"
 # Custom plugins may be added to $ZSH_CUSTOM/plugins/
 # Example format: plugins=(rails git textmate ruby lighthouse)
 # Add wisely, as too many plugins slow down shell startup.
-plugins=(
-	git
-	zsh-autosuggestions
-    zsh-syntax-highlighting
-)
 
-source $ZSH/oh-my-zsh.sh
 
 #source /usr/share/doc/fzf/examples/key-bindings.zsh
 #source /usr/share/doc/fzf/examples/completion.zsh
@@ -112,7 +123,3 @@ source $ZSH/oh-my-zsh.sh
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
-
-# Created by `pipx` on 2024-02-13 15:47:56
-export PATH="$PATH:/Users/margey.shah/.local/bin"

@@ -3,6 +3,7 @@
 
 # Path to your oh-my-zsh installation.
 export ZSH="$HOME/.oh-my-zsh"
+export PYTHONDONTWRITEBYTECODE=1
 
 setopt hist_ignore_all_dups
 HISTFILE=~/.zsh_history

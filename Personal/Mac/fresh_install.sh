@@ -1,4 +1,5 @@
 #! /bin/zsh -
+##################### DEPRECATED, DO NOT USE.
 
 dotfileSetup() {
   # Remove generated config/directories

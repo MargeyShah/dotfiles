@@ -29,14 +29,34 @@ if [ -f "/etc/wsl.conf" ]; then
 	LS_COLORS="ow=01;36;40" && export LS_COLORS
 fi
 
+
+# SDKMAN Setup - version manager for java adjacent development kits
+# https://sdkman.io/
+export SDKMAN_DIR="$HOME/.sdkman"
+[[ -s "$HOME/.sdkman/bin/sdkman-init.sh" ]] && source "$HOME/.sdkman/bin/sdkman-init.sh"
+
 export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 export LC_CTYPE="en_US.UTF-8"
 
-# Zoxide setup - smart cd replacement (command is 'z') 
+# Zoxide setup - smart cd replacement (command is 'z')
 # can't move to another dir, breaks functionality.
 # https://github.com/ajeetdsouza/zoxide
+
 eval "$(zoxide init zsh)"
+
+# PyEnv Setup - Python version manager
+# https://github.com/pyenv/pyenv
+
+export PYENV_ROOT="$HOME/.pyenv"
+command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
+eval "$(pyenv init -)"
+eval "$(pyenv virtualenv-init -)"
+
+# fzf setup
+# https://github.com/junegunn/fzf
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load

@@ -113,3 +113,6 @@ source $ZSH/oh-my-zsh.sh
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
 [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+
+# Created by `pipx` on 2024-02-13 15:47:56
+export PATH="$PATH:/Users/margey.shah/.local/bin"

@@ -1,0 +1,54 @@
+apiVersion: rbac.authorization.k8s.io/v1
+kind: ClusterRole
+metadata:
+  annotations:
+    artifact.spinnaker.io/location: ""
+    artifact.spinnaker.io/name: argo-workflow-br-argo-workflows-admin
+    artifact.spinnaker.io/type: kubernetes/clusterRole
+    artifact.spinnaker.io/version: ""
+    kubectl.kubernetes.io/last-applied-configuration: |
+      {"apiVersion":"rbac.authorization.k8s.io/v1","kind":"ClusterRole","metadata":{"annotations":{"artifact.spinnaker.io/location":"","artifact.spinnaker.io/name":"argo-workflow-br-argo-workflows-admin","artifact.spinnaker.io/type":"kubernetes/clusterRole","artifact.spinnaker.io/version":"","moniker.spinnaker.io/application":"argo-p2fs-test","moniker.spinnaker.io/cluster":"clusterRole argo-workflow-br-argo-workflows-admin"},"labels":{"app.kubernetes.io/component":"server","app.kubernetes.io/instance":"argo-workflow-br","app.kubernetes.io/managed-by":"spinnaker","app.kubernetes.io/name":"argo-workflows-server","app.kubernetes.io/part-of":"argo-workflows","helm.sh/chart":"argo-workflows-0.40.7","k8s.hulu.com/ingested-by-spinnaker":"true","k8s.hulu.com/mariner-app":"argo-p2fs-test","rbac.authorization.k8s.io/aggregate-to-admin":"true"},"name":"argo-workflow-br-argo-workflows-admin"},"rules":[{"apiGroups":["argoproj.io"],"resources":["workflows","workflows/finalizers","workfloweventbindings","workfloweventbindings/finalizers","workflowtemplates","workflowtemplates/finalizers","cronworkflows","cronworkflows/finalizers","clusterworkflowtemplates","clusterworkflowtemplates/finalizers","workflowtasksets","workflowtasksets/finalizers","workflowtaskresults","workflowtaskresults/finalizers","workflowartifactgctasks","workflowartifactgctasks/finalizers"],"verbs":["create","delete","deletecollection","get","list","patch","update","watch"]}]}
+    moniker.spinnaker.io/application: argo-p2fs-test
+    moniker.spinnaker.io/cluster: clusterRole argo-workflow-br-argo-workflows-admin
+  creationTimestamp: "2024-01-17T19:43:34Z"
+  labels:
+    app.kubernetes.io/component: server
+    app.kubernetes.io/instance: argo-workflow-br
+    app.kubernetes.io/managed-by: spinnaker
+    app.kubernetes.io/name: argo-workflows-server
+    app.kubernetes.io/part-of: argo-workflows
+    helm.sh/chart: argo-workflows-0.40.7
+    k8s.hulu.com/mariner-app: argo-p2fs-test
+    rbac.authorization.k8s.io/aggregate-to-admin: "true"
+  name: argo-workflow-br-argo-workflows-admin
+  resourceVersion: "97888425"
+  uid: 67ef43e4-9979-4fc4-aa08-3496b1d7421e
+rules:
+- apiGroups:
+  - argoproj.io
+  resources:
+  - workflows
+  - workflows/finalizers
+  - workfloweventbindings
+  - workfloweventbindings/finalizers
+  - workflowtemplates
+  - workflowtemplates/finalizers
+  - cronworkflows
+  - cronworkflows/finalizers
+  - clusterworkflowtemplates
+  - clusterworkflowtemplates/finalizers
+  - workflowtasksets
+  - workflowtasksets/finalizers
+  - workflowtaskresults
+  - workflowtaskresults/finalizers
+  - workflowartifactgctasks
+  - workflowartifactgctasks/finalizers
+  verbs:
+  - create
+  - delete
+  - deletecollection
+  - get
+  - list
+  - patch
+  - update
+  - watch

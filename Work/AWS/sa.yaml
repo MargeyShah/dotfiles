@@ -1,0 +1,10 @@
+apiVersion: v1
+kind: ServiceAccount
+metadata:
+  name: amd-standard-gha-rs-no-permission
+  namespace: gha-runner-scale-set
+  annotations:
+    # workflows.argoproj.io/rbac-rule: "'BuildReleaseTeam' in groups"
+    workflows.argoproj.io/rbac-rule: "true"
+    workflows.argoproj.io/rbac-rule-precedence: "0"
+    eks.amazonaws.com/role-arn: "arn:aws:iam::414158246671:role/argop2fs/argop2fs-argo-br"

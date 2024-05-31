@@ -1,5 +1,10 @@
 #! /bin/zsh -
 
+# Variable Setup
+PROJECT_DIR=${HOME}/.scripts
+PYENV_VERSION=3.12.3
+TEMP_DIR=${HOME}/tmp
+
 dotfileSetup() {
   # Remove generated config/directories
   sudo rm -f ${HOME}/.zprofile
@@ -60,10 +65,7 @@ backup(){
 # If script has an error, run cleanup.
 trap 'failedInstall' ERR
 
-# Variable Setup
-PROJECT_DIR=${HOME}/.scripts
-PYENV_VERSION=3.11.4
-TEMP_DIR=${HOME}/tmp
+#### Starts here.
 
 mkdir -p ${HOME}/tmp && cd ${TEMP_DIR}
 

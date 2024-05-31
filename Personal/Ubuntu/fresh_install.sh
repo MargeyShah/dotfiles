@@ -352,10 +352,16 @@ display_menu() {
     read -p "Enter your choice: " choice
 }
 
+ROOT_PATH=/home # Linux path
+if [ "$(uname)" = 'Darwin' ]; then # Mac
+    ROOT_PATH=/Users
+fi
+
+
 # Get the username
 if [[ $# -eq 1 ]]; then
     optarg="$1"
-    USER_DIR="/home/${optarg}"
+    USER_DIR="${ROOT_PATH}/${optarg}"
     PROJECT_DIR=${USER_DIR}/.scripts
     TEMP_DIR=${USER_DIR}/install
 else

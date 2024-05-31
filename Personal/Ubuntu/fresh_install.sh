@@ -356,7 +356,7 @@ display_menu() {
 if [[ $# -eq 1 ]]; then
     optarg="$1"
     USER_DIR="/home/${optarg}"
-    PROJECT_DIR=${USER_DIR}/.scripts/
+    PROJECT_DIR=${USER_DIR}/.scripts
     TEMP_DIR=${USER_DIR}/install
 else
     echo "Usage: $0 <username>"

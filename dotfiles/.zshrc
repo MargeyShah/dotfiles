@@ -33,6 +33,11 @@ export LANG="en_US.UTF-8"
 export LC_ALL="en_US.UTF-8"
 export LC_CTYPE="en_US.UTF-8"
 
+# Zoxide setup - smart cd replacement (command is 'z') 
+# can't move to another dir, breaks functionality.
+# https://github.com/ajeetdsouza/zoxide
+eval "$(zoxide init zsh)"
+
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
 # a theme from this variable instead of looking in $ZSH/themes/

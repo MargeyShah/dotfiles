@@ -1,7 +1,20 @@
 #!/bin/bash
 
 PYENV_VERSION=3.12.3
-ROOT_DIR=/root
+
+function cp_or_ln() {
+    local src=$1
+    local dst=$2
+
+    if [[ "$(uname)" == "Darwin" ]]; then
+        # Mac OS
+        ln -s "$src" "$dst"
+    else
+        # Unix
+        cp -rs "$src" "$dst"
+    fi
+}
+
 isDesktop() {
   ##############################################
   ### Element Messenger
@@ -266,31 +279,35 @@ dotfileSetup() {
   rm -rf ${USER_DIR}/.config/vim
   rm -rf ${USER_DIR}/.config/kitty
   rm -rf ${USER_DIR}/.config/nvim
-  rm -rf ${USER_DIR}/.oh-my-zsh/custom/resources
+  rm -rf ${USER_DIR}/.oh-my-zsh/custom
+
 
   sudo rm -f ${ROOT_DIR}/.zshrc
   sudo rm -rf ${ROOT_DIR}/.config/vim
   sudo rm -rf ${ROOT_DIR}/.config/nvim
   sudo rm -rf ${ROOT_DIR}/.config/kitty
 
-  # Setup directories if they don't exist
-  mkdir -p ${USER_DIR}/.config/nvim
-  mkdir -p ${USER_DIR}/.config/vim
-  mkdir -p ${USER_DIR}/.config/kitty
-  mkdir -p ${USER_DIR}/.oh-my-zsh
+  # Create directories if needed.
+  mkdir -p ${USER_DIR}/.config/
+  mkdir -p ${USER_DIR}/.oh-my-zsh/
 
   # Setup symlinks 
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${USER_DIR}/.config
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${USER_DIR}/.config
-  cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
-  cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${USER_DIR}/.oh-my-zsh
-  cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${USER_DIR}/.zshrc
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim/ ${USER_DIR}/.config
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/vim ${USER_DIR}/.config
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${USER_DIR}/.oh-my-zsh
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${USER_DIR}/.zshrc
 
-  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/nvim/ ${ROOT_DIR}/.config
-  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/vim ${ROOT_DIR}/.config
-  sudo cp -rs ${PROJECT_DIR}/dotfiles/.config/kitty ${ROOT_DIR}/.config
-  sudo cp -rs ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
-  sudo cp -rs ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
+  if [ "$(uname)" = 'Linux' ]; then # Linux only
+    sudo mkdir -p ${ROOT_DIR}/.config
+    sudo mkdir -p ${ROOT_DIR}/.oh-my-zsh
+
+    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim/ ${ROOT_DIR}/.config
+    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/vim ${ROOT_DIR}/.config
+    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${ROOT_DIR}/.config
+    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
+    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
+  fi
 }
 
 # Removes snap from Ubuntu entirely.
@@ -353,6 +370,7 @@ display_menu() {
 }
 
 ROOT_PATH=/home # Linux path
+ROOT_DIR=/root
 if [ "$(uname)" = 'Darwin' ]; then # Mac
     ROOT_PATH=/Users
 fi

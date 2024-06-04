@@ -22,7 +22,7 @@ function cp_or_ln() {
 
     if [[ "$(uname)" == "Darwin" ]]; then
         # Mac OS
-        ln -sfn "$src" "$dst"
+        cp -Rs "$src" "$dst"
     else
         # Unix
         cp -rs "$src" "$dst"
@@ -320,8 +320,13 @@ dotfileSetup() {
   fi
 
   # install oh-my-zsh plugins
-  git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
-  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+  if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ] ; then
+    git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+
+  fi
+  if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting" ] ; then
+    git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+  fi 
 }
 
 # Removes snap from Ubuntu entirely.

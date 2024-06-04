@@ -1,6 +1,6 @@
 # pipX
 # https://github.com/pypa/pipx
-export PATH="$PATH:/Users/margey.shah/.local/bin"
+export PATH="$PATH:$HOME/.local/bin"
 
 # NVM Setup - Node/NPM version manager
 # https://github.com/nvm-sh/nvm

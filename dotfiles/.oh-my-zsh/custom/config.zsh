@@ -28,8 +28,13 @@ function run()
 }
 
 matrixup() {
-  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all -K
+  cd $HOME/matrix-docker-ansible-deploy
+  ansible-playbook -i inventory/hosts setup.yml --tags=setup-all --vault-password-file inventory/host_vars/matrix.thegrand.co/pass.txt  -K
   ansible-playbook -i inventory/hosts $HOME/matrix-docker-ansible-deploy/inventory/host_vars/coturn.yml -K
+}
+
+dotfiles() {
+  $HOME/.scripts/Personal/Ubuntu/fresh_install.sh $1
 }
 
 matrix() {

@@ -2,13 +2,27 @@
 
 PYENV_VERSION=3.12.3
 
+function Sudo {
+        local firstArg=$1
+        if [ $(type -t $firstArg) = function ]
+        then
+                shift && command sudo bash -c "$(declare -f $firstArg);$firstArg $*"
+        elif [ $(type -t $firstArg) = alias ]
+        then
+                alias sudo='\sudo '
+                eval "sudo $@"
+        else
+                command sudo "$@"
+        fi
+}
+
 function cp_or_ln() {
     local src=$1
     local dst=$2
 
     if [[ "$(uname)" == "Darwin" ]]; then
         # Mac OS
-        ln -s "$src" "$dst"
+        ln -sfn "$src" "$dst"
     else
         # Unix
         cp -rs "$src" "$dst"
@@ -276,14 +290,12 @@ dotfileSetup() {
   rm -f ${USER_DIR}/.oh-my-zsh/custom/work_config.zsh
   rm -f ${USER_DIR}/.oh-my-zsh/custom/wsl.zsh
   rm -rf ${USER_DIR}/.config/nvim
-  rm -rf ${USER_DIR}/.config/vim
   rm -rf ${USER_DIR}/.config/kitty
   rm -rf ${USER_DIR}/.config/nvim
   rm -rf ${USER_DIR}/.oh-my-zsh/custom
 
 
   sudo rm -f ${ROOT_DIR}/.zshrc
-  sudo rm -rf ${ROOT_DIR}/.config/vim
   sudo rm -rf ${ROOT_DIR}/.config/nvim
   sudo rm -rf ${ROOT_DIR}/.config/kitty
 
@@ -292,8 +304,7 @@ dotfileSetup() {
   mkdir -p ${USER_DIR}/.oh-my-zsh/
 
   # Setup symlinks 
-  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim/ ${USER_DIR}/.config
-  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/vim ${USER_DIR}/.config
+  cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim ${USER_DIR}/.config
   cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
   cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${USER_DIR}/.oh-my-zsh
   cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${USER_DIR}/.zshrc
@@ -302,12 +313,15 @@ dotfileSetup() {
     sudo mkdir -p ${ROOT_DIR}/.config
     sudo mkdir -p ${ROOT_DIR}/.oh-my-zsh
 
-    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim/ ${ROOT_DIR}/.config
-    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/vim ${ROOT_DIR}/.config
-    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${ROOT_DIR}/.config
-    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
-    sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
+    Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim/ ${ROOT_DIR}/.config
+    Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${ROOT_DIR}/.config
+    Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
+    Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
   fi
+
+  # install oh-my-zsh plugins
+  git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
+  git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
 }
 
 # Removes snap from Ubuntu entirely.
@@ -343,7 +357,6 @@ failedInstall(){
   sudo rm -rf ${USER_DIR}/.zsh
   sudo rm -rf ${USER_DIR}/install
   sudo rm -rf ${USER_DIR}/.config/nvim
-  sudo rm -rf ${USER_DIR}/.config/vim
   sudo rm -f ${USER_DIR}/.zcompdump
   sudo rm -f ${USER_DIR}/.viminfo
   sudo rm -rf ${ROOT_DIR}/.oh-my-zsh

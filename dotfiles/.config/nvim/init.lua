@@ -1,2 +1,2 @@
-require("joermo")
-vim.g.python3_host_prog = '$HOME/.pyenv/versions/neovim3/bin/python'
+require("joermo.config")
+require("joermo.lazy")

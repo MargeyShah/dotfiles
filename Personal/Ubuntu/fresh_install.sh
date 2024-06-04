@@ -22,7 +22,7 @@ function cp_or_ln() {
 
     if [[ "$(uname)" == "Darwin" ]]; then
         # Mac OS
-        cp -Rs "$src" "$dst"
+        gcp -Rs "$src" "$dst"
     else
         # Unix
         cp -rs "$src" "$dst"
@@ -303,6 +303,10 @@ dotfileSetup() {
   mkdir -p ${USER_DIR}/.config/
   mkdir -p ${USER_DIR}/.oh-my-zsh/
 
+  if [ "$(uname)" = 'Darwin' ]; then # Mac only
+    brew install coreutils 
+    alias gcp=gcp
+  fi
   # Setup symlinks 
   cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim ${USER_DIR}/.config
   cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
@@ -318,7 +322,7 @@ dotfileSetup() {
     Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
     Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
   fi
-
+  
   # install oh-my-zsh plugins
   if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ] ; then
     git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions

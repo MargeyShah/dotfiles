@@ -12,6 +12,7 @@ export NVM_DIR="$HOME/.nvm"
 # https://brew.sh/
 if [ "$(uname)" = 'Darwin' ]; then # Mac
     eval "$(/opt/homebrew/bin/brew shellenv)"
+    alias gcp=gcp
 fi
 
 if [ "$(uname)" = 'Linux' ]; then # Unix

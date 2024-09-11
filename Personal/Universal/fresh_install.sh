@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYENV_VERSION=3.12.3
+PYENV_VERSION=3.12.6
 
 function Sudo {
         local firstArg=$1
@@ -142,10 +142,10 @@ isServer() {
   ##############################################
   ### Misc Installations
 
-  # Install SSH server for access                                                                                          
-  sudo apt install openssh-server -y     
+  # Install SSH server for access
+  sudo apt install openssh-server -y
   systemctl enable ssh
-  systemctl start ssh                                                                                                     
+  systemctl start ssh
   sudo systemctl enable ssh
   sudo systemctl start ssh
   # Set key permissions
@@ -154,14 +154,14 @@ isServer() {
 
   # Start the ssh-agent in the background
   eval $(ssh-agent -s)
-  # Set ssh-agent to use the key 
+  # Set ssh-agent to use the key
   ssh-add ${USER_DIR}/.ssh/id_rsa
 
   # Set zsh as default shell if it isn't already
   chsh -s $(which zsh)
 
   # Setup crontab using root user (crontab -e) (path is /var/spool/cron/crontabs/$USER)
-  (sudo crontab -l -u root 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Ubuntu/cron/jobs ) | sudo crontab -u root -
+  (sudo crontab -l -u root 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Universal/cron/jobs ) | sudo crontab -u root -
 
   # source ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
 
@@ -238,7 +238,8 @@ installGeneric() {
     curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
 
     # nerd fonts (for lsd)
-    cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/UbuntuMonoNerdFont-Regular.ttf
+    mkdir -p ~/.local/share/fonts
+    cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/Regular/UbuntuMonoNerdFont-Regular.ttf
     cd ${TEMP_DIR}
 
     ##############################################
@@ -267,8 +268,8 @@ installGeneric() {
 
     ##############################################
     ### Misc Configuration
-    # Show system specs in terminal                                                                                                    
-    brew install neofetch -y       
+    # Show system specs in terminal
+    brew install neofetch -y
 
     # Install pyenv and set default version.
     pyenv install ${PYENV_VERSION}
@@ -304,10 +305,10 @@ dotfileSetup() {
   mkdir -p ${USER_DIR}/.oh-my-zsh/
 
   if [ "$(uname)" = 'Darwin' ]; then # Mac only
-    brew install coreutils 
+    brew install coreutils
     alias gcp=gcp
   fi
-  # Setup symlinks 
+  # Setup symlinks
   cp_or_ln ${PROJECT_DIR}/dotfiles/.config/nvim ${USER_DIR}/.config
   cp_or_ln ${PROJECT_DIR}/dotfiles/.config/kitty ${USER_DIR}/.config
   cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${USER_DIR}/.oh-my-zsh
@@ -322,7 +323,7 @@ dotfileSetup() {
     Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.oh-my-zsh/custom ${ROOT_DIR}/.oh-my-zsh
     Sudo cp_or_ln ${PROJECT_DIR}/dotfiles/.zshrc ${ROOT_DIR}/.zshrc
   fi
-  
+
   # install oh-my-zsh plugins
   if [ ! -d "$HOME/.oh-my-zsh/custom/plugins/zsh-autosuggestions" ] ; then
     git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
@@ -338,28 +339,28 @@ removeSnap() {
   echo "Removing Snap"
   snap --version
   snap list
-  systemctl disable snapd.service
-  systemctl disable snapd.socket
-  systemctl disable snapd.seeded.service
-  snap remove firefox
-  snap remove gtk-common-themes
-  snap remove gnome-3-38-2004
-  snap remove snapd-desktop-integration
-  snap remove snap-store
-  snap remove core20
-  snap remove bare
-  snap remove snapd
-  systemctl stop snapd
-  systemctl disable snapd
-  systemctl mask snapd
-  apt purge snapd -y
-  apt-mark hold snapd
-  apt autoremove --purge snapd
-  rm -rf /snap
-  rm -rf /var/snap
-  rm -rf /var/lib/snapd
-  rm -rf /var/cache/snapd/
-  rm -rf ~/snap/
+  sudo systemctl disable snapd.service
+  sudo systemctl disable snapd.socket
+  sudo systemctl disable snapd.seeded.service
+  sudo snap remove firefox
+  sudo snap remove gtk-common-themes
+  sudo snap remove gnome-3-38-2004
+  sudo snap remove snapd-desktop-integration
+  sudo snap remove snap-store
+  sudo snap remove core20
+  sudo snap remove bare
+  sudo snap remove snapd
+  sudo systemctl stop snapd
+  sudo systemctl disable snapd
+  sudo systemctl mask snapd
+  sudo apt purge snapd -y
+  sudo apt-mark hold snapd
+  sudo apt autoremove --purge snapd
+  sudo rm -rf /snap
+  sudo rm -rf /var/snap
+  sudo rm -rf /var/lib/snapd
+  sudo rm -rf /var/cache/snapd/
+  sudo rm -rf ~/snap/
 }
 
 failedInstall(){
@@ -465,7 +466,7 @@ elif [[ $choice == "2" ]]; then
     isServer
     dotfileSetup
     removeSnap
-else 
+else
     dotfileSetup
 fi
 

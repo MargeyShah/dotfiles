@@ -35,7 +35,7 @@ matrixup() {
 }
 
 dotfiles() {
-  $HOME/.scripts/Personal/Ubuntu/fresh_install.sh $1
+  $HOME/.scripts/Personal/Universal/fresh_install.sh $1
 }
 
 matrix() {

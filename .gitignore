@@ -13,8 +13,8 @@ dotfiles/.oh-my-zsh/README.md
 dotfiles/.oh-my-zsh/SECURITY.md
 dotfiles/.oh-my-zsh/lib/
 dotfiles/.oh-my-zsh/oh-my-zsh.sh
-dotfiles/.oh-my-zsh/plugins/
 dotfiles/.oh-my-zsh/templates/
 dotfiles/.oh-my-zsh/themes/
 dotfiles/.oh-my-zsh/tools/
 
+dotfiles/.oh-my-zsh/custom/plugins/

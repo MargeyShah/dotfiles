@@ -17,5 +17,8 @@ fi
 
 if [ "$(uname)" = 'Linux' ]; then # Unix
     eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    if [ -d "$HOME/platform-tools" ] ; then
+        export PATH="$HOME/platform-tools:$PATH"
+    fi
 fi
 

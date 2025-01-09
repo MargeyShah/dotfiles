@@ -206,6 +206,7 @@ installGeneric() {
     ### oh-my-zsh plugins - zsh-autosuggestions, zsh-syntax, fzf
     git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
     git clone https://github.com/zsh-users/zsh-syntax-highlighting.git ~/.oh-my-zsh/custom/plugins/zsh-syntax-highlighting
+    git clone --depth 1 -- https://github.com/marlonrichert/zsh-autocomplete.git ~/.oh-my-zsh/custom/plugins/zsh-autocomplete
     git clone --depth 1 https://github.com/junegunn/fzf.git ~/.fzf
     ~/.fzf/install
 
@@ -228,11 +229,6 @@ installGeneric() {
     cargo install gping
     cargo install lsd
     sudo apt install -y duf zoxide fd-find
-
-    # Gping
-    echo "deb http://packages.azlux.fr/debian/ buster main" | sudo tee /etc/apt/sources.list.d/azlux.list
-    wget -qO - https://azlux.fr/repo.gpg.key | sudo apt-key add -
-    sudo apt update
 
     # xh - curl but better
     curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh

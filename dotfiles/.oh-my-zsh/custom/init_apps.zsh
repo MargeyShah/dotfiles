@@ -2,6 +2,9 @@
 # https://github.com/pypa/pipx
 export PATH="$PATH:$HOME/.local/bin"
 
+# golang
+export PATH=$PATH:/usr/local/go/bin
+
 # NVM Setup - Node/NPM version manager
 # https://github.com/nvm-sh/nvm
 export NVM_DIR="$HOME/.nvm"

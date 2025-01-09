@@ -38,10 +38,6 @@ dotfiles() {
   $HOME/.scripts/Personal/Universal/fresh_install.sh $1
 }
 
-matrix() {
-  ssh margey@192.168.1.26
-}
-
 function q(){
  ssh $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
 }
@@ -57,13 +53,8 @@ function dos() {
 
 
 function dcexec() {
-  sudo docker exec -it "$@" bash;
+  sudo docker exec -it "$@" 
 }
-
-function currdir() {
-  CURRDIR=$(pwd)
-}
-
 
 # NETWORKING
 alias portsused='sudo netstat -tulpn | grep LISTEN'
@@ -80,51 +71,111 @@ alias derase='dstopcont ; drmcont ; ddelimages ; dvolprune ; dsysprune'
 alias dprune='ddelimages ; dprunevol ; dprunesys'
 
 if [ "$(hostname)" = 'Pistachio' ]; then
+  DOCKER_COMPOSE_T2="$HOME/docker/docker-compose.yml"
+  DOCKER_COMPOSE_GATHERLY="$HOME/gatherly/docker-compose.yml"
+  DOCKER_COMPOSE_GATHERLY_DEV="$HOME/gatherly-dev/docker-compose.yml"
+  DOCKER_COMPOSE_SUPABASE="$HOME/gatherly/supabase/docker-compose.yml"
+  DOCKER_COMPOSE_SUPABASE_LOGGING="$HOME/gatherly/supabase/docker-compose-logging.yml"
+
   # CrowdSec
-  alias cmet='sudo docker compose -f $HOME/docker/docker-compose-t2.yml exec -t crowdsec cscli metrics'
-  alias cupd='sudo docker compose -f $HOME/docker/docker-compose-t2.yml exec -t crowdsec cscli hub update'
-  alias clist='sudo docker compose -f $HOME/docker/docker-compose-t2.yml exec -t crowdsec cscli collections list'
-  alias cscli='sudo docker compose -f $HOME/docker/docker-compose-t2.yml exec -t crowdsec cscli'
-  alias csunban='sudo docker compose -f $HOME/docker/docker-compose-t2.yml exec -t crowdsec cscli decisions delete --ip'
+  alias cmet='sudo docker compose -f $HOME/docker/docker-compose.yml exec -t crowdsec cscli metrics'
+  alias cupd='sudo docker compose -f $HOME/docker/docker-compose.yml exec -t crowdsec cscli hub update'
+  alias clist='sudo docker compose -f $HOME/docker/docker-compose.yml exec -t crowdsec cscli collections list'
+  alias cscli='sudo docker compose -f $HOME/docker/docker-compose.yml exec -t crowdsec cscli'
+  alias csunban='sudo docker compose -f $HOME/docker/docker-compose.yml exec -t crowdsec cscli decisions delete --ip'
+
+# Define the paths to your docker-compose files
+
+  # Helper function to change directory and run docker compose commands
+  run_compose() {
+      local compose_path="$1"
+      shift  # Remove the compose path from arguments
+
+      local currdir=$(pwd)
+      cd "$(dirname "$compose_path")"  # Change to directory containing compose file
+      sudo docker compose -f "$compose_path" "$@"
+      cd "$currdir"  # Change back to original directory
+  }
+
+  # Function to handle "up" command with option for --remove-orphans
+  compose_up() {
+      local compose_path="$1"
+      shift
+
+      local args=()
+      local include_flag=true
+
+      for arg in "$@"; do
+          if [[ "$arg" == "--remove-orphans" ]]; then
+              include_flag=false
+          else
+              args+=("$arg")
+          fi
+      done
+
+      if [ "$include_flag" = true ]; then
+          run_compose "$compose_path" "${args[@]}" up -d --remove-orphans
+      else
+          run_compose "$compose_path" "${args[@]}" up -d
+      fi
+  }
 
   # Media Server - Docker
-  alias dcrun2='currdir; cd $HOME/docker ; sudo docker compose -f $HOME/docker/docker-compose-t2.yml'
-  alias dclogs2='currdir; cd $HOME/docker ; sudo docker compose -f $HOME/docker/docker-compose-t2.yml logs -tf --tail="50"'
-  alias dcup2='dcrun2 up -d'
-  alias dcdown2='dcrun2 down'
-  alias dcrec2='dcrun2 up -d --force-recreate'
-  alias dcstop2='dcrun2 stop'
-  alias dcrestart2='dcrun2 restart'
-  alias dcpull2='currdir; cd $HOME/docker ; sudo docker compose -f $HOME/docker/docker-compose-t2.yml pull'
-
+  dcup2() { compose_up "$DOCKER_COMPOSE_T2" "$@"; }
+  dclogs2() { run_compose "$DOCKER_COMPOSE_T2" logs -tf --tail="50" "$@"; }
+  dcdown2() { run_compose "$DOCKER_COMPOSE_T2" down "$@"; }
+  dcrec2() { run_compose "$DOCKER_COMPOSE_T2" up -d --force-recreate "$@"; }
+  dcstop2() { run_compose "$DOCKER_COMPOSE_T2" stop "$@"; }
+  dcrestart2() { run_compose "$DOCKER_COMPOSE_T2" restart "$@"; }
+  dcpull2() { run_compose "$DOCKER_COMPOSE_T2" pull "$@"; }
 
   # Gatherly Infrastructure - Docker
-  alias dcrun='currdir; cd $HOME/gatherly ; sudo docker compose -f $HOME/gatherly/docker-compose.yml   '
-  alias dclogs='currdir; cd /docker ; sudo docker compose -f $HOME/gatherly/docker-compose.yml logs -tf --tail="50" '
-  alias dcup='dcrun up -d '
-  alias dcdown='dcrun down '
-  alias dcrec='dcrun up -d --force-recreate '
-  alias dcstop='dcrun stop '
-  alias dcrestart='dcrun restart '
-  alias dcpull='currdir; cd $HOME/gatherly ; sudo docker compose -f $HOME/gatherly/docker-compose.yml  pull '
+  dcup() { compose_up "$DOCKER_COMPOSE_GATHERLY" "$@"; }
+  dclogs() { run_compose "$DOCKER_COMPOSE_GATHERLY" logs -tf --tail="50" "$@"; }
+  dcdown() { run_compose "$DOCKER_COMPOSE_GATHERLY" down "$@"; }
+  dcrec() { run_compose "$DOCKER_COMPOSE_GATHERLY" up -d --force-recreate "$@"; }
+  dcstop() { run_compose "$DOCKER_COMPOSE_GATHERLY" stop "$@"; }
+  dcrestart() { run_compose "$DOCKER_COMPOSE_GATHERLY" restart "$@"; }
+  dcpull() { run_compose "$DOCKER_COMPOSE_GATHERLY" pull "$@"; }
 
   # Gatherly Apps (Web frontend/backend) - Docker
-  alias gtrun='currdir; cd $HOME/gatherly-dev ; sudo docker compose -f $HOME/gatherly-dev/docker-compose.yml   '
-  alias gtlogs='currdir; cd /docker ; sudo docker compose -f $HOME/gatherly-dev/docker-compose.yml logs -tf --tail="50" '
-  alias gtup='gtrun up -d '
-  alias gtdown='gtrun down '
-  alias gtrec='gtrun up -d --force-recreate '
-  alias gtstop='gtrun stop '
-  alias gtrestart='gtrun restart '
-  alias gtpull='currdir; cd $HOME/gatherly-dev ; sudo docker compose -f $HOME/gatherly-dev/docker-compose.yml  pull '
+  gtup() { compose_up "$DOCKER_COMPOSE_GATHERLY_DEV" "$@"; }
+  gtlogs() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" logs -tf --tail="50" "$@"; }
+  gtdown() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" down "$@"; }
+  gtrec() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" up -d --force-recreate "$@"; }
+  gtstop() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" stop "$@"; }
+  gtrestart() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" restart "$@"; }
+  gtpull() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" pull "$@"; }
 
   # Supabase Infra
-  alias sbrun='currdir; cd $HOME/gatherly/supabase ; sudo docker compose -f $HOME/gatherly/supabase/docker-compose.yml -f $HOME/gatherly/supabase/docker-compose-logging.yml   '
-  alias sblogs='currdir; cd $HOME/gatherly/supabase ; sudo docker compose -f $HOME/gatherly/supabase/docker-compose.yml -f $HOME/gatherly/supabase/docker-compose-logging.yml logs -tf --tail="50" '
-  alias sbup='sbrun up -d '
-  alias sbdown='sbrun down '
-  alias sbrec='sbrun up -d --force-recreate '
-  alias sbstop='sbrun stop '
-  alias sbrestart='sbrun restart '
-  alias sbpull='currdir; cd $HOME/gatherly/supabase ; sudo docker compose -f $HOME/gatherly/supabase/docker-compose.yml -f $HOME/gatherly/supabase/docker-compose-logging.yml  pull '
+  # Since Supabase uses two compose files, a special "sbrun" function is added for that setup
+  sbrun() {
+      local currdir=$(pwd)
+      cd "$HOME/gatherly/supabase"
+      sudo docker compose -f "$DOCKER_COMPOSE_SUPABASE" -f "$DOCKER_COMPOSE_SUPABASE_LOGGING" "$@"
+      cd "$currdir"
+  }
+  sbup() { sbrun up -d "$@"; }
+  sblogs() { sbrun logs -tf --tail="50" "$@"; }
+  sbdown() { sbrun down "$@"; }
+  sbrec() { sbrun up -d --force-recreate "$@"; }
+  sbstop() { sbrun stop "$@"; }
+  sbrestart() { sbrun restart "$@"; }
+  sbpull() { sbrun pull "$@"; }
+
+  # Debrid order of operations fix
+  debridfix () {
+    cd /home/margey/docker/stacks/blackhole
+    sudo docker compose --profile blackhole_all down
+    cd /home/margey/docker
+    sudo docker compose stop rclone zurg
+    sudo docker compose stop sonarr radarr prowlarr plex
+    sleep 10
+    sudo docker compose up -d rclone
+    cd /home/margey/docker/stacks/blackhole
+    sleep 10
+    sudo docker compose --profile blackhole_all up -d
+    cd /home/margey/docker
+    sudo docker compose up -d sonarr radarr prowlarr plex
+  }
 fi

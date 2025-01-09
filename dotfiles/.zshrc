@@ -18,7 +18,8 @@ ZSH_THEME="robbyrussell"
 plugins=(
 	git
 	zsh-autosuggestions
-    zsh-syntax-highlighting
+  zsh-syntax-highlighting
+  zsh-autocomplete
 )
 
 source $ZSH/oh-my-zsh.sh
@@ -56,7 +57,6 @@ eval "$(pyenv virtualenv-init -)"
 # fzf setup
 # https://github.com/junegunn/fzf
 
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load
@@ -148,3 +148,5 @@ eval "$(pyenv virtualenv-init -)"
 # alias zshconfig="mate ~/.zshrc"
 # alias ohmyzsh="mate ~/.oh-my-zsh"
 
+
+[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh

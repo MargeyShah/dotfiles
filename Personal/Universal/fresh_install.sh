@@ -1,6 +1,6 @@
 #!/bin/bash
 
-PYENV_VERSION=3.12.6
+PYENV_VERSION=3.12.8
 
 function Sudo {
         local firstArg=$1
@@ -29,31 +29,69 @@ function cp_or_ln() {
     fi
 }
 
+package_exists() {
+    local command_name="$1"
+    if command -v "$command_name" &> /dev/null; then
+        echo "${command_name} already installed"
+        return 0  # Command exists
+    else
+        return 1  # Command does not exist
+    fi
+}
+
+install_package() {
+    local package_name="$1"
+    echo "Installing $package_name..."
+    sudo apt update
+    sudo apt install -y "$package_name"
+}
+
+check_and_prompt_install() {
+    local command_name="$1"
+    local package_name="${2:-$command_name}"
+
+    if is_command_installed "$command_name"; then
+        echo "$command_name is already installed."
+    else
+        # Ask user for confirmation to install
+        read -p "$command_name is not installed. Do you want to install? (y/n): " choice
+        if [[ $choice == "y" || $choice == "Y" ]]; then
+            install_package "$package_name"
+        else
+            echo "Skipped installation of $package_name."
+        fi
+    fi
+}
+
 isDesktop() {
   ##############################################
   ### Element Messenger
 
   # Get GPG keys
-  wget -O /usr/share/keyrings/element-io-archive-keyring.gpg https://packages.element.io/debian/element-io-archive-keyring.gpg
-  
-  # Add repo to apt list
-  echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
+  if ! package_exists "element-desktop"; then
+    wget -O /usr/share/keyrings/element-io-archive-keyring.gpg https://packages.element.io/debian/element-io-archive-keyring.gpg
+    
+    # Add repo to apt list
+    echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
 
-  # Update apt repo list and install
-  sudo apt update
-  sudo apt install element-desktop -y
+    # Update apt repo list and install
+    sudo apt update
+    sudo apt install element-desktop -y
+  fi
   
   ##############################################
 
   # XONE XBOX wireless controller setup
-  echo "Installing Xbox Wireless Dongle support, please unplug your dongle."
-  echo "Press enter once you've validated it is unplugged"
-  read -r _
-  git clone https://github.com/medusalix/xone
-  cd xone
-  ./install.sh --release
-  xone-get-firmware.sh
-  cd ${TEMP_DIR}
+  if ! package_exists "xone"; then
+    echo "Installing Xbox Wireless Dongle support, please unplug your dongle."
+    echo "Press enter once you've validated it is unplugged"
+    read -r _
+    git clone https://github.com/medusalix/xone
+    cd xone
+    ./install.sh --release
+    xone-get-firmware.sh
+    cd ${TEMP_DIR}
+  fi
   ##############################################
 
   echo "rsync is a backup utility to store a backup of your files with versioning"
@@ -65,79 +103,96 @@ isDesktop() {
 
 isServer() {
   ### just - makefile but better (justfile)
-  git clone 'https://mpr.makedeb.org/just'
-  cd just
-  makedeb -si
-  cd ${TEMP_DIR}
+  if ! package_exists "just"; then
+    git clone 'https://mpr.makedeb.org/just'
+    cd just
+    makedeb -si
+    cd ${TEMP_DIR}
+    fi
 
   # Installs sdkman to install and manage multiple versions of SDKs.
-  curl -s "https://get.sdkman.io" | bash
+  if ! package_exists "sdk"; then
+    curl -s "https://get.sdkman.io" | bash
+  fi
   ##############################################
   ### VirtualBox
   # Download & add GPG keys
-  curl https://www.virtualbox.org/download/oracle_vbox_2016.asc | gpg --dearmor > oracle_vbox_2016.gpg --yes
-  curl https://www.virtualbox.org/download/oracle_vbox.asc | gpg --dearmor > oracle_vbox.gpg --yes
+  if ! package_exists "vboxmanage"; then
+    curl https://www.virtualbox.org/download/oracle_vbox_2016.asc | gpg --dearmor > oracle_vbox_2016.gpg --yes
+    curl https://www.virtualbox.org/download/oracle_vbox.asc | gpg --dearmor > oracle_vbox.gpg --yes
 
-  sudo install -o root -g root -m 644 oracle_vbox_2016.gpg /etc/apt/trusted.gpg.d/ --yes
-  sudo install -o root -g root -m 644 oracle_vbox.gpg /etc/apt/trusted.gpg.d/ --yes
-  echo "deb [arch=amd64] http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list --yes
+    sudo install -o root -g root -m 644 oracle_vbox_2016.gpg /etc/apt/trusted.gpg.d/ --yes
+    sudo install -o root -g root -m 644 oracle_vbox.gpg /etc/apt/trusted.gpg.d/ --yes
+    echo "deb [arch=amd64] http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list --yes
 
-  # Add VirtualBox repo
-  echo "deb [arch=amd64] http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list --yes
+    # Add VirtualBox repo
+    echo "deb [arch=amd64] http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list --yes
 
-  # Install VirtualBox + extension pack
-  sudo apt update
-  sudo apt install linux-headers-$(uname -r) dkms -y
-  sudo apt install virtualbox-7.0 -y
-  cd ${TEMP_DIR}
-  VER=$(curl -s https://download.virtualbox.org/virtualbox/LATEST.TXT)
-  wget https://download.virtualbox.org/virtualbox/${VER}/Oracle_VM_VirtualBox_Extension_Pack-${VER}.vbox-extpack
-  echo 'y' | VBoxManage extpack install Oracle_VM_VirtualBox_Extension_Pack-*.vbox-extpack
+    # Install VirtualBox + extension pack
+    sudo apt update
+    sudo apt install linux-headers-$(uname -r) dkms -y
+    sudo apt install virtualbox-7.0 -y
+  
+    cd ${TEMP_DIR}
+    VER=$(curl -s https://download.virtualbox.org/virtualbox/LATEST.TXT)
+    wget https://download.virtualbox.org/virtualbox/${VER}/Oracle_VM_VirtualBox_Extension_Pack-${VER}.vbox-extpack
+    echo 'y' | VBoxManage extpack install Oracle_VM_VirtualBox_Extension_Pack-*.vbox-extpack
+  fi
 
   ##############################################
   ### Server Infra Tooling
 
   ### Kubernetes
-  curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
-  echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list --yes
-  sudo apt update
-  sudo apt install kubectl -y
+  if ! package_exists "kubectl"; then
+    curl -fsSL https://pkgs.k8s.io/core:/stable:/v1.28/deb/Release.key | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg --yes
+    echo 'deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/v1.28/deb/ /' | sudo tee /etc/apt/sources.list.d/kubernetes.list --yes
+    sudo apt update
+    sudo apt install kubectl -y
+  fi
 
   ### awscli
-  curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-  unzip awscliv2.zip
-  sudo ./aws/install
+  if ! package_exists "aws"; then
+    curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+    unzip awscliv2.zip
+    sudo ./aws/install
+  fi
 
   ### GitHub CLI
-  type -p curl >/dev/null || (sudo apt update)
-  curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
-  && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
-  && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
-  && sudo apt update \
-  && sudo apt install gh -y
+  if ! package_exists "gh"; then
+    type -p curl >/dev/null || (sudo apt update)
+    curl -fsSL https://cli.github.com/packages/githubcli-archive-keyring.gpg | sudo dd of=/usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && sudo chmod go+r /usr/share/keyrings/githubcli-archive-keyring.gpg \
+    && echo "deb [arch=$(dpkg --print-architecture) signed-by=/usr/share/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null \
+    && sudo apt update \
+    && sudo apt install gh -y
+  fi
 
   ### Speedtest CLI
-  curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
-  sudo apt install speedtest -y
+  if ! package_exists "speedtest"; then
+    curl -s https://packagecloud.io/install/repositories/ookla/speedtest-cli/script.deb.sh | sudo bash
+    sudo apt install speedtest -y
+  fi
 
   ##############################################
   ### Docker
 
   # Add Docker's official GPG key
-  sudo install -m 0755 -d /etc/apt/keyrings
-  curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
-  sudo chmod a+r /etc/apt/keyrings/docker.gpg
-  # Setup Docker apt repo
-  echo \
-  "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
-  "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
-  sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
-  sudo apt-get update
-  # Update apt with new repo
-  sudo apt update
+  if ! package_exists "docker"; then
+    sudo install -m 0755 -d /etc/apt/keyrings
+    curl -fsSL https://download.docker.com/linux/ubuntu/gpg | sudo gpg --dearmor -o /etc/apt/keyrings/docker.gpg --yes
+    sudo chmod a+r /etc/apt/keyrings/docker.gpg
+    # Setup Docker apt repo
+    echo \
+    "deb [arch="$(dpkg --print-architecture)" signed-by=/etc/apt/keyrings/docker.gpg] https://download.docker.com/linux/ubuntu \
+    "$(. /etc/os-release && echo "$VERSION_CODENAME")" stable" | \
+    sudo tee /etc/apt/sources.list.d/docker.list > /dev/null
+    sudo apt-get update
+    # Update apt with new repo
+    sudo apt update
 
-  # Install Docker/Compose/Buildx
-  sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+    # Install Docker/Compose/Buildx
+    sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+  fi
 
   ##############################################
   ### Misc Installations
@@ -201,7 +256,9 @@ installGeneric() {
 
     # This script will require a device that can run homebrew (https://brew.sh)
     # Installs homebrew to install other apps
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    if ! package_exists "brew"; then
+      NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    fi
 
     ### oh-my-zsh plugins - zsh-autosuggestions, zsh-syntax, fzf
     git clone https://github.com/zsh-users/zsh-autosuggestions ~/.oh-my-zsh/custom/plugins/zsh-autosuggestions
@@ -211,28 +268,44 @@ installGeneric() {
     ~/.fzf/install
 
     ### nvim - vim with plugins + config
-    git clone https://github.com/neovim/neovim
-    cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
-    cd build && cpack -G DEB && sudo dpkg -i nvim-linux64.deb
+    if ! package_exists "nvim"; then
+      git clone https://github.com/neovim/neovim
+      cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
+      cd build && cpack -G DEB && sudo dpkg -i nvim-linux64.deb
+    fi
 
     ### rsync = backups, setup with cron to schedule
-    sudo apt install rsync -y
+    if ! package_exists "rsync"; then
+      sudo apt install rsync -y
+    fi
 
     ### Rust & Cargo PKG Manager
-    curl https://sh.rustup.rs -sSf | sh -s -- -y
-    source ${HOME}/.cargo/env
-
+    if ! package_exists "cargo"; then
+      curl https://sh.rustup.rs -sSf | sh -s -- -y
+      source ${HOME}/.cargo/env
+    fi
     ### Tweaks, QOL
-    cargo install tree-sitter-cli
-    cargo install procs
-    cargo install du-dust
-    cargo install gping
-    cargo install lsd
+    if ! package_exists "tree-sitter"; then
+      cargo install tree-sitter-cli
+    fi
+    if ! package_exists "procs"; then
+      cargo install procs
+    fi
+    if ! package_exists "dust"; then
+      cargo install du-dust
+    fi
+    if ! package_exists "gping"; then
+      cargo install gping
+    fi
+    if ! package_exists "lsd"; then
+      cargo install lsd
+    fi
     sudo apt install -y duf zoxide fd-find
 
     # xh - curl but better
-    curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
-
+    if ! package_exists "xh"; then
+      curl -sfL https://raw.githubusercontent.com/ducaale/xh/master/install.sh | sh
+    fi
     # nerd fonts (for lsd)
     mkdir -p ~/.local/share/fonts
     cd ~/.local/share/fonts && curl -fLO https://github.com/ryanoasis/nerd-fonts/raw/HEAD/patched-fonts/UbuntuMono/Regular/UbuntuMonoNerdFont-Regular.ttf
@@ -247,26 +320,30 @@ installGeneric() {
     libbz2-dev libreadline-dev libsqlite3-dev wget curl llvm \
     libncursesw5-dev xz-utils tk-dev libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev -y
 
-    curl https://pyenv.run | bash
-
+    if ! package_exists "pyenv"; then
+      curl https://pyenv.run | bash
+    fi
     ### VSCode
-    # Add GPG key
-    wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
-    sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
+    if ! package_exists "code"; then
+      # Add GPG key
+      wget -qO- https://packages.microsoft.com/keys/microsoft.asc | gpg --dearmor > packages.microsoft.gpg
+      sudo install -D -o root -g root -m 644 packages.microsoft.gpg /etc/apt/keyrings/packages.microsoft.gpg
 
-    # Add apt repo to list
-    sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
-    rm -f packages.microsoft.gpg
+      # Add apt repo to list
+      sudo sh -c 'echo "deb [arch=amd64,arm64,armhf signed-by=/etc/apt/keyrings/packages.microsoft.gpg] https://packages.microsoft.com/repos/code stable main" > /etc/apt/sources.list.d/vscode.list'
+      rm -f packages.microsoft.gpg
 
-    # Update apt repo list and install
-    sudo apt update
-    sudo apt install code # or code-insiders
+      # Update apt repo list and install
+      sudo apt update
+      sudo apt install code # or code-insiders
+    fi
 
     ##############################################
     ### Misc Configuration
     # Show system specs in terminal
-    brew install neofetch -y
-
+    if ! package_exists "neofetch"; then
+      brew install neofetch -y
+    fi
     # Install pyenv and set default version.
     pyenv install ${PYENV_VERSION}
     pyenv global ${PYENV_VERSION}
@@ -274,7 +351,7 @@ installGeneric() {
     # NeoViM PyEnv Configuration
     pyenv virtualenv ${PYENV_VERSION} neovim3
     pyenv activate neovim3 | sh
-    pyenv install neovim | sh
+    python3 -m pip install pynvim | sh
 }
 
 dotfileSetup() {

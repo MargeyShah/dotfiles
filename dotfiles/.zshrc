@@ -26,6 +26,7 @@ source $ZSH/oh-my-zsh.sh
 
 # Override zsh-autocomplete for fill with tab, use zsh-autosuggestions
 bindkey '^I' forward-word
+bindkey '^ ' autosuggest-accept
 # can't move LS_COLORS to another file, breaks functionality. 
 # Fixes WSL2 folder coloring with LS.
 if [ -f "/etc/wsl.conf" ]; then

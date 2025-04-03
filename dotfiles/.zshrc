@@ -7,6 +7,7 @@ export ZSH="$HOME/.oh-my-zsh"
 # ignores duplicate history commands
 setopt hist_ignore_all_dups
 
+
 # Increase zsh command history
 HISTFILE=~/.zsh_history
 HISTSIZE=999999
@@ -25,7 +26,7 @@ plugins=(
 source $ZSH/oh-my-zsh.sh
 
 # Override zsh-autocomplete for fill with tab, use zsh-autosuggestions
-bindkey '^ ' autosuggest-accept
+# bindkey '^ ' autosuggest-accept
 # can't move LS_COLORS to another file, breaks functionality. 
 # Fixes WSL2 folder coloring with LS.
 if [ -f "/etc/wsl.conf" ]; then

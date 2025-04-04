@@ -39,11 +39,12 @@ dotfiles() {
 }
 
 function q(){
-  if [ -f "/etc/wsl.conf" ]; then
-    ssh -X $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
-  else
-    ssh $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
-  fi
+  ssh -X $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
+  # if [ -f "/etc/wsl.conf" ]; then
+  #   ssh -X $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
+  # else
+  #   ssh $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
+  # fi
 }
 
 function run_disowned() {

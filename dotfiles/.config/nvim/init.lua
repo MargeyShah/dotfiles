@@ -1,4 +1,2 @@
--- bootstrap lazy.nvim, LazyVim and your plugins
-
-require("config.nvim_overrides")
-require("config.lazy")
+require("joermo.config")
+require("joermo.lazy")

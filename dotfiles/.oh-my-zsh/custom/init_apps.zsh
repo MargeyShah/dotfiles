@@ -18,7 +18,14 @@ if [ "$(uname)" = 'Darwin' ]; then # Mac
     alias gcp=gcp
 fi
 
+
 if [ "$(uname)" = 'Linux' ]; then # Unix
+    # Not NIX OS, import brew
+    if ! ( [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null ); then
+      eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
+    fi
+
+    # If dir exists, add to path
     if [ -d "$HOME/platform-tools" ] ; then
         export PATH="$HOME/platform-tools:$PATH"
     fi

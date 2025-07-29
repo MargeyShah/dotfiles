@@ -7,7 +7,6 @@ export ZSH="$HOME/.oh-my-zsh"
 # ignores duplicate history commands
 setopt hist_ignore_all_dups
 
-
 # Increase zsh command history
 HISTFILE=~/.zsh_history
 HISTSIZE=999999
@@ -54,14 +53,14 @@ eval "$(zoxide init zsh)"
 export PYENV_ROOT="$HOME/.pyenv"
 command -v pyenv >/dev/null || export PATH="$PYENV_ROOT/bin:$PATH"
 eval "$(pyenv init -)"
-# eval "$(pyenv virtualenv-init -)"
+
+if [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null; then 
+  eval "$(pyenv virtualenv-init -)"
+fi
 
 # fzf setup
 source <(fzf --zsh)
 # https://github.com/junegunn/fzf
-
-# Jojo vim config param
-export NIX_NEOVIM=1
 
 # Set list of themes to pick from when loading at random
 # Setting this variable when ZSH_THEME=random will cause zsh to load

@@ -58,6 +58,7 @@ eval "$(pyenv init -)"
 # eval "$(pyenv virtualenv-init -)"
 
 # fzf setup
+source <(fzf --zsh)
 # https://github.com/junegunn/fzf
 
 # Jojo vim config param

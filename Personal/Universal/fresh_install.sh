@@ -1,5 +1,6 @@
 #!/bin/bash
 
+
 PYENV_VERSION=3.12.8
 
 function Sudo {

@@ -217,8 +217,8 @@ isServer() {
   chsh -s $(which zsh)
 
   # Setup crontab using root user (crontab -e) (path is /var/spool/cron/crontabs/$USER)
-  (sudo crontab -l -u root 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Universal/cron/jobs ) | sudo crontab -u root -
-
+  (sudo crontab -l -u root 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Universal/cron/root ) | sudo crontab -u root -
+  (sudo crontab -l -u margey 2>/dev/null || true; cat ${PROJECT_DIR}/Personal/Universal/cron/margey ) | sudo crontab -u margey -
   # source ${USER_DIR}/.oh-my-zsh/custom/scripts.zsh
 
   ##############################################

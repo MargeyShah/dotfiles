@@ -1,0 +1,1 @@
+36 0 * * *      /home/margey/exporter/run.sh >/tmp/discordchatexporter.log 2>/tmp/discordchatexportererror.log

@@ -1,4 +1,5 @@
 00 5    * * 1  reboot
 */5 *  * * *   docker ps -f health=unhealthy --format "docker restart {{.ID}}" | sh
-0 0 * * *      rsync -avx -e ssh --exclude jellyfin/ --exclude plexms/ --exclude lidarr/ --exclude snap/ --exclude go/ --exclude Downloads/ --exclude temp/ --exclude homeassis/ --exclude .dbus --exclude .local/ --exclude .cache/ --exclude .nvm/ --exclude .npm/ --exclude .ansible/ --exclude .docker/ --exclude .ssh/ --exclude .oh-my-zsh/ /home/margey/ margey@192.168.0.3:/volume1/NetBackup/$(hostname) 
-0 0 * * *      /home/margey/exporter/run.sh >/tmp/discordchatexporter.log 2>/tmp/discordchatexportererror.log
+0 0 * * *      rsync -avx -e ssh --delete --exclude jellyfin/ --exclude plexms/ --exclude lidarr/ --exclude snap/ --exclude go/ --exclude Downloads/ --exclude temp/ --exclude homeassis/ --exclude .dbus --exclude .local/ --exclude .cache/ --exclude .nvm/ --exclude .npm/ --exclude .ansible/ --exclude .docker/ --exclude .ssh/ --exclude .oh-my-zsh/ /home/margey/ margey@192.168.0.3:/volume1/NetBackup/$(hostname) 
+00 2 * * *     /home/margey/exporter/restart-frontend.sh >/tmp/discordfrontend.log 2>/tmp/discordfrontenderror.log
+30 5 * * *     /home/margey/docker/scripts/debrid_fix.sh > /tmp/debrid_fix.log 2>/tmp/debrid_fix_error.log

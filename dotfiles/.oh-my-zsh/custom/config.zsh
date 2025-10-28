@@ -170,17 +170,9 @@ if [ "$(hostname)" = 'Pistachio' ]; then
 
   # Debrid order of operations fix
   debridfix () {
-    # cd /home/margey/docker/stacks/blackhole
-    # sudo docker compose --profile blackhole_all down
     cd /home/margey/docker
-    sudo docker compose stop decypharr
-    sudo docker compose stop sonarr radarr prowlarr plex
-    sleep 10
-    sudo docker compose up -d decypharr 
-    # cd /home/margey/docker/stacks/blackhole
-    # sleep 10
-    # sudo docker compose --profile blackhole_all up -d
-    cd /home/margey/docker
-    sudo docker compose up -d sonarr radarr prowlarr plex
+    sudo docker compose --profile debrid down
+    sleep 5
+    sudo docker compose --profile debrid up -d
   }
 fi

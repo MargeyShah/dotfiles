@@ -172,7 +172,10 @@ if [ "$(hostname)" = 'Pistachio' ]; then
   debridfix () {
     cd /home/margey/docker
     sudo docker compose --profile debrid down
+    sudo umount /disks/pistachio/plex/Media/remote/realdebrid
     sleep 5
-    sudo docker compose --profile debrid up -d
+    sudo docker compose up -d decypharr
+    sleep 5
+    sudo docker compose up -d sonarr radarr prowlarr plex jf prowlarr
   }
 fi

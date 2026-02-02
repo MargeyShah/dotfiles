@@ -18,6 +18,7 @@ alias ce="z"
 alias dig="dog"
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
+alias j='just'
 
 function run()
 {

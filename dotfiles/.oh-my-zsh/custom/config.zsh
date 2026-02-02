@@ -29,6 +29,7 @@ function run()
 
 matrixup() {
   cd $HOME/matrix-docker-ansible-deploy
+  git pull && just update
   ansible-playbook -i inventory/hosts setup.yml --tags=setup-all,start --vault-password-file inventory/host_vars/matrix.thegrand.co/pass.txt
   cd -
 }

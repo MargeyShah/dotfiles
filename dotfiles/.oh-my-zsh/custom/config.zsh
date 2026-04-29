@@ -87,14 +87,40 @@ if [ "$(hostname)" = 'Pistachio' ]; then
 
 # Define the paths to your docker-compose files
 
+  # Helper to parse docker arguments
+  parse_docker_args() {
+      GLOBAL_ARGS=()
+      CMD_ARGS=()
+      local in_profile=false
+      for arg in "$@"; do
+          if [ "$in_profile" = true ]; then
+              GLOBAL_ARGS+=("$arg")
+              in_profile=false
+          elif [[ "$arg" == "--profile" || "$arg" == "-p" ]]; then
+              GLOBAL_ARGS+=("--profile")
+              in_profile=true
+          elif [[ "$arg" == --profile=* || "$arg" == -p=* ]]; then
+              # Allow format -p=media or --profile=media
+              GLOBAL_ARGS+=("--profile=${arg#*=}")
+          else
+              CMD_ARGS+=("$arg")
+          fi
+      done
+
+      # Default to profile all if no profile and no specific services/cmd_args are provided
+      if [ ${#GLOBAL_ARGS[@]} -eq 0 ] && [ ${#CMD_ARGS[@]} -eq 0 ]; then
+          GLOBAL_ARGS=("--profile" "all")
+      fi
+  }
+
   # Helper function to change directory and run docker compose commands
-  run_compose() {
+  run_compose_parsed() {
       local compose_path="$1"
-      shift  # Remove the compose path from arguments
+      shift
 
       local currdir=$(pwd)
       cd "$(dirname "$compose_path")"  # Change to directory containing compose file
-      sudo docker compose -f "$compose_path" "$@"
+      sudo docker compose -f "$compose_path" "${GLOBAL_ARGS[@]}" "$@" "${CMD_ARGS[@]}"
       cd "$currdir"  # Change back to original directory
   }
 
@@ -102,67 +128,68 @@ if [ "$(hostname)" = 'Pistachio' ]; then
   compose_up() {
       local compose_path="$1"
       shift
+      parse_docker_args "$@"
 
-      local args=()
-      local include_flag=true
-
-      for arg in "$@"; do
+      local include_orphans=true
+      local filtered_cmd_args=()
+      for arg in "${CMD_ARGS[@]}"; do
           if [[ "$arg" == "--remove-orphans" ]]; then
-              include_flag=false
+              include_orphans=false
           else
-              args+=("$arg")
+              filtered_cmd_args+=("$arg")
           fi
       done
+      CMD_ARGS=("${filtered_cmd_args[@]}")
 
-      if [ "$include_flag" = true ]; then
-          run_compose "$compose_path" "${args[@]}" up -d --remove-orphans
+      if [ "$include_orphans" = true ]; then
+          run_compose_parsed "$compose_path" up -d --remove-orphans
       else
-          run_compose "$compose_path" "${args[@]}" up -d
+          run_compose_parsed "$compose_path" up -d
       fi
   }
 
   # Media Server - Docker
   dcup2() { compose_up "$DOCKER_COMPOSE_T2" "$@"; }
-  dclogs2() { run_compose "$DOCKER_COMPOSE_T2" logs -tf --tail="50" "$@"; }
-  dcdown2() { run_compose "$DOCKER_COMPOSE_T2" down "$@"; }
-  dcrec2() { run_compose "$DOCKER_COMPOSE_T2" up -d --force-recreate "$@"; }
-  dcstop2() { run_compose "$DOCKER_COMPOSE_T2" stop "$@"; }
-  dcrestart2() { run_compose "$DOCKER_COMPOSE_T2" restart "$@"; }
-  dcpull2() { run_compose "$DOCKER_COMPOSE_T2" pull "$@"; }
+  dclogs2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" logs -tf --tail="50"; }
+  dcdown2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" down; }
+  dcrec2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" up -d --force-recreate; }
+  dcstop2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" stop; }
+  dcrestart2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" restart; }
+  dcpull2() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_T2" pull; }
 
   # Gatherly Infrastructure - Docker
   dcup() { compose_up "$DOCKER_COMPOSE_GATHERLY" "$@"; }
-  dclogs() { run_compose "$DOCKER_COMPOSE_GATHERLY" logs -tf --tail="50" "$@"; }
-  dcdown() { run_compose "$DOCKER_COMPOSE_GATHERLY" down "$@"; }
-  dcrec() { run_compose "$DOCKER_COMPOSE_GATHERLY" up -d --force-recreate "$@"; }
-  dcstop() { run_compose "$DOCKER_COMPOSE_GATHERLY" stop "$@"; }
-  dcrestart() { run_compose "$DOCKER_COMPOSE_GATHERLY" restart "$@"; }
-  dcpull() { run_compose "$DOCKER_COMPOSE_GATHERLY" pull "$@"; }
+  dclogs() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" logs -tf --tail="50"; }
+  dcdown() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" down; }
+  dcrec() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" up -d --force-recreate; }
+  dcstop() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" stop; }
+  dcrestart() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" restart; }
+  dcpull() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY" pull; }
 
   # Gatherly Apps (Web frontend/backend) - Docker
   gtup() { compose_up "$DOCKER_COMPOSE_GATHERLY_DEV" "$@"; }
-  gtlogs() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" logs -tf --tail="50" "$@"; }
-  gtdown() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" down "$@"; }
-  gtrec() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" up -d --force-recreate "$@"; }
-  gtstop() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" stop "$@"; }
-  gtrestart() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" restart "$@"; }
-  gtpull() { run_compose "$DOCKER_COMPOSE_GATHERLY_DEV" pull "$@"; }
+  gtlogs() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" logs -tf --tail="50"; }
+  gtdown() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" down; }
+  gtrec() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" up -d --force-recreate; }
+  gtstop() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" stop; }
+  gtrestart() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" restart; }
+  gtpull() { parse_docker_args "$@"; run_compose_parsed "$DOCKER_COMPOSE_GATHERLY_DEV" pull; }
 
   # Supabase Infra
   # Since Supabase uses two compose files, a special "sbrun" function is added for that setup
-  sbrun() {
+  sbrun_parsed() {
       local currdir=$(pwd)
       cd "$HOME/gatherly/supabase"
-      sudo docker compose -f "$DOCKER_COMPOSE_SUPABASE" -f "$DOCKER_COMPOSE_SUPABASE_LOGGING" "$@"
+      sudo docker compose -f "$DOCKER_COMPOSE_SUPABASE" -f "$DOCKER_COMPOSE_SUPABASE_LOGGING" "${GLOBAL_ARGS[@]}" "$@" "${CMD_ARGS[@]}"
       cd "$currdir"
   }
-  sbup() { sbrun up -d "$@"; }
-  sblogs() { sbrun logs -tf --tail="50" "$@"; }
-  sbdown() { sbrun down "$@"; }
-  sbrec() { sbrun up -d --force-recreate "$@"; }
-  sbstop() { sbrun stop "$@"; }
-  sbrestart() { sbrun restart "$@"; }
-  sbpull() { sbrun pull "$@"; }
+  sbup() { parse_docker_args "$@"; sbrun_parsed up -d; }
+  sblogs() { parse_docker_args "$@"; sbrun_parsed logs -tf --tail="50"; }
+  sbdown() { parse_docker_args "$@"; sbrun_parsed down; }
+  sbrec() { parse_docker_args "$@"; sbrun_parsed up -d --force-recreate; }
+  sbstop() { parse_docker_args "$@"; sbrun_parsed stop; }
+  sbrestart() { parse_docker_args "$@"; sbrun_parsed restart; }
+  sbpull() { parse_docker_args "$@"; sbrun_parsed pull; }
 
   # Debrid order of operations fix
   debridfix () {

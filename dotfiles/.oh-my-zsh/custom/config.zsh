@@ -191,14 +191,68 @@ if [ "$(hostname)" = 'Pistachio' ]; then
   sbrestart() { parse_docker_args "$@"; sbrun_parsed restart; }
   sbpull() { parse_docker_args "$@"; sbrun_parsed pull; }
 
-  # Debrid order of operations fix
-  debridfix () {
-    cd /home/margey/docker
-    sudo docker compose --profile debrid down
-    sudo umount /disks/pistachio/plex/Media/remote/realdebrid
-    sleep 5
-    sudo docker compose up -d decypharr
-    sleep 5
-    sudo docker compose up -d sonarr radarr prowlarr plex jf prowlarr
-  }
+    # Debrid order of operations fix
+    debridfix () {
+      cd /home/margey/docker
+      sudo docker compose --profile debrid down
+      sudo umount /disks/pistachio/plex/Media/remote/realdebrid
+      sleep 5
+      sudo docker compose up -d decypharr
+      sleep 5
+      sudo docker compose up -d sonarr radarr prowlarr plex jf prowlarr
+    }
+
+    # Zsh completion helper for docker-compose wrappers
+    _docker_compose_wrapper_complete() {
+        # The last argument is the subcommand (e.g., up, logs, down),
+        # and all preceding arguments are the compose file paths.
+        local subcommand="${@[-1]}"
+        local -a compose_files
+        compose_files=("${@[1,-2]}")
+        
+        local -a new_words
+        new_words=("docker" "compose")
+        for file in "${compose_files[@]}"; do
+            new_words+=("-f" "$file")
+        done
+        new_words+=("$subcommand" "${words[@]:1}")
+        
+        local offset=$(( 2 + 2 * ${#compose_files[@]} ))
+        words=("${new_words[@]}")
+        (( CURRENT += offset ))
+        _docker
+    }
+
+    # Register completions for Media Server (T2)
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' up" dcup2 dcrec2
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' logs" dclogs2
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' down" dcdown2
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' stop" dcstop2
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' restart" dcrestart2
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_T2' pull" dcpull2
+
+    # Register completions for Gatherly Infrastructure
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' up" dcup dcrec
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' logs" dclogs
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' down" dcdown
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' stop" dcstop
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' restart" dcrestart
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY' pull" dcpull
+
+    # Register completions for Gatherly Apps (Web)
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' up" gtup gtrec
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' logs" gtlogs
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' down" gtdown
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' stop" gtstop
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' restart" gtrestart
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_GATHERLY_DEV' pull" gtpull
+
+    # Register completions for Supabase (Multiple Compose files)
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' up" sbup sbrec
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' logs" sblogs
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' down" sbdown
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' stop" sbstop
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' restart" sbrestart
+    compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' pull" sbpull
 fi
+

@@ -1,7 +1,3 @@
 00 5 * * 1     reboot
-* * * * *      docker ps -f "health=unhealthy" --format "{{.ID}}" | xargs -r docker restart
 0 0 * * *      rsync -avx -e ssh --delete --exclude lidarr/ --exclude snap/ --exclude go/ --exclude Downloads/ --exclude temp/ --exclude homeassis/ --exclude .dbus --exclude .local/ --exclude .cache/ --exclude .nvm/ --exclude .npm/ --exclude .ansible/ --exclude .docker/ --exclude .ssh/ --exclude .oh-my-zsh/ --exclude .local/share/zinit/ /home/margey/ margey@192.168.0.3:/volume1/NetBackup/$(hostname)
-00 2 * * *     /home/margey/exporter/restart-frontend.sh >/tmp/discordfrontend.log 2>/tmp/discordfrontenderror.log
-30 5 * * *     /home/margey/docker/scripts/debrid_fix.sh > /tmp/debrid_fix.log 2>/tmp/debrid_fix_error.log
 */5 * * * *    /home/margey/docker/scripts/update_wan_ip.sh.sh > /tmp/wan_ip_check.log 2>/tmp/wan_ip_check_error.log
-

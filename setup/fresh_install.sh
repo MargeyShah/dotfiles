@@ -326,7 +326,25 @@ install_server() {
 
     step "server: virtualbox"
     if ! pkg_exists vboxmanage; then
-        sudo apt install -y virtualbox virtualbox-ext-pack
+        wget -qO- https://www.virtualbox.org/download/oracle_vbox_2016.asc \
+            | sudo gpg --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg --dearmor
+        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" \
+            | sudo tee /etc/apt/sources.list.d/virtualbox.list
+        sudo apt update
+        sudo apt install -y linux-headers-"$(uname -r)" dkms
+        echo "virtualbox virtualbox/module-compilation-allowed boolean true" \
+            | sudo debconf-set-selections
+        sudo apt install -y virtualbox-7.1
+    fi
+
+    if ! sudo VBoxManage list extpacks 2>/dev/null | grep -q "Extension Pack"; then
+        cd "$TEMP_DIR"
+        VBOX_VERSION="$(VBoxManage --version)"
+        VBOX_BUILD="$(echo "$VBOX_VERSION" | sed 's/r.*//')"
+        VBOX_REV="$(echo "$VBOX_VERSION" | sed 's/^\([0-9.]*\)r\([0-9]*\).*/\2/')"
+        wget "https://download.virtualbox.org/virtualbox/${VBOX_BUILD}/Oracle_VirtualBox_Extension_Pack-${VBOX_BUILD}-${VBOX_REV}.vbox-extpack"
+        echo y | sudo VBoxManage extpack install "Oracle_VirtualBox_Extension_Pack-${VBOX_BUILD}-${VBOX_REV}.vbox-extpack"
+        cd "$PROJECT_DIR"
     fi
 
     step "server: kubectl"

@@ -282,7 +282,6 @@ install_desktop() {
 
     step "desktop: vscode"
     if ! pkg_exists code; then
-        sudo apt install -y wget gpg
         wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
             | sudo gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
         sudo tee /etc/apt/sources.list.d/vscode.sources <<EOF
@@ -376,7 +375,6 @@ install_server() {
 
     step "server: gh"
     if ! pkg_exists gh; then
-        type -p wget >/dev/null || (sudo apt update && sudo apt install wget -y)
         sudo mkdir -p -m 755 /etc/apt/keyrings
         out=$(mktemp)
         wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
@@ -397,8 +395,6 @@ install_server() {
 
     step "server: docker"
     if ! pkg_exists docker; then
-        sudo apt update
-        sudo apt install -y ca-certificates curl
         sudo install -m 0755 -d /etc/apt/keyrings
         sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
         sudo chmod a+r /etc/apt/keyrings/docker.asc

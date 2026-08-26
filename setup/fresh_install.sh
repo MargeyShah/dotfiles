@@ -93,6 +93,43 @@ on_fail() {
 }
 trap 'on_fail' ERR
 
+# Append a line to a root-owned file only if it isn't already present.
+append_if_missing() {
+    local line="$1" file="$2"
+    [ -n "$line" ] || return
+    if ! sudo grep -qF -- "$line" "$file" 2>/dev/null; then
+        echo "$line" | sudo tee -a "$file" >/dev/null
+    fi
+}
+
+# Sync system config (fstab + crontabs) from the repo, deduping existing lines.
+sync_system_config() {
+    step "system: fstab"
+    while IFS= read -r line; do
+        append_if_missing "$line" /etc/fstab
+    done < "$PROJECT_DIR/setup/etc/fstab"
+
+    step "system: crontab (root)"
+    local root_file
+    root_file="$(sudo crontab -l -u root 2>/dev/null || true)"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        grep -qF -- "$line" <<<"$root_file" || root_file+=$'\n'"$line"
+    done < "$PROJECT_DIR/setup/cron/root"
+    printf '%s\n' "$root_file" | sudo crontab -u root -
+
+    step "system: crontab (margey)"
+    local cur_user
+    cur_user="$(id -un)"
+    local user_file
+    user_file="$(sudo crontab -l -u "$cur_user" 2>/dev/null || true)"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        grep -qF -- "$line" <<<"$user_file" || user_file+=$'\n'"$line"
+    done < "$PROJECT_DIR/setup/cron/margey"
+    printf '%s\n' "$user_file" | sudo crontab -u "$cur_user" -
+}
+
 # ---------- Common install (all profiles) ----------
 install_common() {
     step "common: base packages"
@@ -351,10 +388,7 @@ step "server: crontab"
     if ! pkg_exists crontab; then
         sudo apt install cron -y
     fi
-    local current_user
-    current_user="$(id -un)"
-    (sudo crontab -l -u root 2>/dev/null || true; cat "$PROJECT_DIR/setup/cron/root") | sudo crontab -u root -
-    (sudo crontab -l -u "$current_user" 2>/dev/null || true; cat "$PROJECT_DIR/setup/cron/margey") | sudo crontab -u "$current_user" -
+    sync_system_config
 }
 
 # ---------- Disney (work) profile (Mac) ----------
@@ -424,6 +458,11 @@ dotfile_setup() {
             Sudo cp_or_ln "$_f" /root/.local/share/zinit/snippets/
         done
         Sudo cp_or_ln "$PROJECT_DIR/dotfiles/.zshrc" /root/.zshrc
+    fi
+
+    if [[ "$PROFILE" == "server" ]]; then
+        step "dotfiles: system config (fstab + crontab)"
+        sync_system_config
     fi
 }
 

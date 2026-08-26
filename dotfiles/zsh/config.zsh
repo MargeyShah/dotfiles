@@ -15,7 +15,7 @@ alias ping="gping"
 alias ps="procs"
 alias c='cd'
 alias ce="z"
-alias dig="dog"
+alias dig="doggo"
 alias xh='xh "$@" --style monokai'
 alias grep="rg"
 alias j='just'
@@ -36,11 +36,18 @@ matrixup() {
 }
 
 dotfiles() {
-  $HOME/.scripts/Personal/Universal/fresh_install.sh $1
+  $HOME/.scripts/Personal/Universal/fresh_install.sh
 }
 
+# Local SSH hosts for quick connect (used by q())
+LOCAL_SSH_IPS=(
+  "margey@Pistachio"
+  "pi@octopi"
+  "margey@Macadamia"
+)
+
 function q(){
-  ssh $(cat ~/.oh-my-zsh/custom/resources/local_ssh_ips | fzf)
+  ssh $(printf '%s\n' "${LOCAL_SSH_IPS[@]}" | fzf)
 }
 
 function run_disowned() {
@@ -71,7 +78,7 @@ alias ddelimages='sudo docker rmi $(docker images -q)'
 alias derase='dstopcont ; drmcont ; ddelimages ; dvolprune ; dsysprune'
 alias dprune='ddelimages ; dprunevol ; dprunesys'
 
-if [ "$(hostname)" = 'Pistachio' ]; then
+if is_env linux && is_hostname Pistachio; then
   DOCKER_COMPOSE_T2="$HOME/docker/docker-compose.yml"
   DOCKER_COMPOSE_GATHERLY="$HOME/gatherly/docker-compose.yml"
   DOCKER_COMPOSE_GATHERLY_DEV="$HOME/gatherly-dev/docker-compose.yml"
@@ -254,5 +261,20 @@ if [ "$(hostname)" = 'Pistachio' ]; then
     compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' stop" sbstop
     compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' restart" sbrestart
     compdef "_docker_compose_wrapper_complete '$DOCKER_COMPOSE_SUPABASE' '$DOCKER_COMPOSE_SUPABASE_LOGGING' pull" sbpull
+fi
+
+# ---------- WSL ----------
+if is_env wsl; then
+    # LS_COLORS fix for WSL2 folder coloring. Can't move to another file.
+    LS_COLORS="ow=01;36;40" && export LS_COLORS
+
+    # Start ssh-agent and load the professional key
+    eval "$(ssh-agent -s)" >/dev/null
+    ssh-add ${HOME}/.ssh/id_ed25519_professional 2>/dev/null
+
+    # WSL pbcopy (copy to Windows clipboard)
+    pbcopy() {
+        printf '\033]52;c;%s\a' "$(base64 -w0)"
+    }
 fi
 

@@ -36,7 +36,7 @@ matrixup() {
 }
 
 dotfiles() {
-  $HOME/.scripts/Personal/Universal/fresh_install.sh
+  $HOME/.scripts/setup/fresh_install.sh
 }
 
 # Local SSH hosts for quick connect (used by q())

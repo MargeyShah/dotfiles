@@ -353,8 +353,8 @@ step "server: crontab"
     fi
     local current_user
     current_user="$(id -un)"
-    (sudo crontab -l -u root 2>/dev/null || true; cat "$PROJECT_DIR/Personal/Universal/cron/root") | sudo crontab -u root -
-    (sudo crontab -l -u "$current_user" 2>/dev/null || true; cat "$PROJECT_DIR/Personal/Universal/cron/margey") | sudo crontab -u "$current_user" -
+    (sudo crontab -l -u root 2>/dev/null || true; cat "$PROJECT_DIR/setup/cron/root") | sudo crontab -u root -
+    (sudo crontab -l -u "$current_user" 2>/dev/null || true; cat "$PROJECT_DIR/setup/cron/margey") | sudo crontab -u "$current_user" -
 }
 
 # ---------- Disney (work) profile (Mac) ----------

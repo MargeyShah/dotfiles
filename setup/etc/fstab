@@ -2,3 +2,5 @@
 192.168.0.3:/volume1/cloud /disks/pistachio/cloud nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
 192.168.0.3:/volume1/oldbackup /disks/pistachio/oldbackups nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
 192.168.0.3:/volume1/startup /disks/pistachio/startup nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
+192.168.0.3:/volume1/NetBackup /disks/pistachio/netbackup nfs auto,nofail,noatime,nolock,intr,tcp,actimeo=1800 0 0
+/swapfile                                 none            swap    sw              0       0

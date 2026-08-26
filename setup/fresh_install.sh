@@ -298,6 +298,15 @@ step "desktop: neofetch"
     if ! pkg_exists rsync; then
         sudo apt install rsync -y
     fi
+
+    step "desktop: zellij"
+    if ! pkg_exists zellij; then
+        if [[ "$OS" == "mac" ]]; then
+            brew install zellij
+        else
+            cargo install zellij
+        fi
+    fi
 }
 
 # ---------- Server profile (Linux) ----------
@@ -317,18 +326,7 @@ install_server() {
 
     step "server: virtualbox"
     if ! pkg_exists vboxmanage; then
-        curl https://www.virtualbox.org/download/oracle_vbox_2016.asc | gpg --dearmor > oracle_vbox_2016.gpg
-        curl https://www.virtualbox.org/download/oracle_vbox.asc | gpg --dearmor > oracle_vbox.gpg
-        sudo install -o root -g root -m 644 oracle_vbox_2016.gpg /etc/apt/trusted.gpg.d/
-        sudo install -o root -g root -m 644 oracle_vbox.gpg /etc/apt/trusted.gpg.d/
-        echo "deb [arch=amd64] http://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" | sudo tee /etc/apt/sources.list.d/virtualbox.list
-        sudo apt update
-        sudo apt install linux-headers-"$(uname -r)" dkms -y
-        sudo apt install virtualbox-7.0 -y
-        cd "$TEMP_DIR"
-        VER=$(curl -s https://download.virtualbox.org/virtualbox/LATEST.TXT)
-        wget "https://download.virtualbox.org/virtualbox/${VER}/Oracle_VM_VirtualBox_Extension_Pack-${VER}.vbox-extpack"
-        echo 'y' | VBoxManage extpack install Oracle_VM_VirtualBox_Extension_Pack-*.vbox-extpack
+        sudo apt install -y virtualbox virtualbox-ext-pack
     fi
 
     step "server: kubectl"
@@ -438,6 +436,19 @@ dotfile_setup() {
 
     if [[ "$OS" == "mac" ]]; then
         brew install coreutils
+    fi
+
+    step "dotfiles: prerequisites"
+    if ! pkg_exists starship; then
+        if [[ "$OS" == "mac" ]]; then
+            brew install starship
+        else
+            curl -sS https://starship.rs/install.sh | sh -s -- -y
+        fi
+    fi
+    if [ ! -f "$HOME/.local/share/zinit/zinit.git/zinit.zsh" ]; then
+        mkdir -p "$HOME/.local/share/zinit"
+        git clone https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git"
     fi
 
     step "dotfiles: symlink config"

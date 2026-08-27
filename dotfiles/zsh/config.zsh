@@ -39,7 +39,7 @@ dotfiles() {
   $HOME/.scripts/setup/fresh_install.sh
 }
 
-nvim-up() {
+nvimup() {
   bash "$HOME/.scripts/setup/fresh_install.sh" --nvim
 }
 

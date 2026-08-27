@@ -478,6 +478,19 @@ install_disney() {
 
 # ---------- Dotfiles ----------
 dotfile_setup() {
+    if [ -d "$HOME/.oh-my-zsh" ]; then
+        echo ""
+        echo "WARNING: Found a legacy oh-my-zsh install at $HOME/.oh-my-zsh"
+        echo "This setup uses zinit and does not use oh-my-zsh."
+        read -rp "Remove the leftover oh-my-zsh directory? [y/N]: " rm_omz
+        if [[ "$rm_omz" == "y" || "$rm_omz" == "Y" ]]; then
+            rm -rf "$HOME/.oh-my-zsh"
+            echo "Removed $HOME/.oh-my-zsh"
+        else
+            echo "Skipping removal of $HOME/.oh-my-zsh"
+        fi
+    fi
+
     step "dotfiles: backup existing config"
     backup_path "$HOME/.zprofile"
     backup_path "$HOME/.zshrc"

@@ -109,11 +109,18 @@ on_fail() {
 }
 trap 'on_fail' ERR
 
+# Normalize whitespace and check if a line exists on stdin. 0=present, 1=absent.
+line_present() {
+    local line="$1" norm
+    norm="$(printf '%s' "$line" | awk '{ $1=$1; print }')"
+    awk -v n="$norm" '{ $1=$1; if ($0==n) f=1 } END{ exit f?0:1 }'
+}
+
 # Append a line to a root-owned file only if it isn't already present.
 append_if_missing() {
     local line="$1" file="$2"
     [ -n "$line" ] || return
-    if ! sudo grep -qF -- "$line" "$file" 2>/dev/null; then
+    if ! line_present "$line" < <(sudo cat "$file" 2>/dev/null); then
         echo "$line" | sudo tee -a "$file" >/dev/null
     fi
 }
@@ -130,7 +137,7 @@ sync_system_config() {
     root_file="$(sudo crontab -l -u root 2>/dev/null || true)"
     while IFS= read -r line; do
         [ -n "$line" ] || continue
-        grep -qF -- "$line" <<<"$root_file" || root_file+=$'\n'"$line"
+        line_present "$line" <<<"$root_file" || root_file+=$'\n'"$line"
     done < "$PROJECT_DIR/setup/cron/root"
     printf '%s\n' "$root_file" | sudo crontab -u root -
 
@@ -141,7 +148,7 @@ sync_system_config() {
     user_file="$(sudo crontab -l -u "$cur_user" 2>/dev/null || true)"
     while IFS= read -r line; do
         [ -n "$line" ] || continue
-        grep -qF -- "$line" <<<"$user_file" || user_file+=$'\n'"$line"
+        line_present "$line" <<<"$user_file" || user_file+=$'\n'"$line"
     done < "$PROJECT_DIR/setup/cron/margey"
     printf '%s\n' "$user_file" | sudo crontab -u "$cur_user" -
 }

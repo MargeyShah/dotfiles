@@ -24,7 +24,10 @@ zinit snippet "$HOME/.local/share/zinit/snippets/config.zsh"
 # ---------- Completion ----------
 autoload -Uz compinit
 mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
-compinit -d "${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
+local compflags="-d ${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
+# Skip insecure-dir check when running as root (e.g. sudo -E zsh)
+[[ $EUID -eq 0 ]] && compflags="-u $compflags"
+compinit ${=compflags}
 
 # Better completion UX
 zstyle ':completion:*' menu select

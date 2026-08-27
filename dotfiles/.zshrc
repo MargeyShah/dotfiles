@@ -127,8 +127,5 @@ for cmd in node npm npx; do
     eval "$cmd() { load-nvm; command $cmd \"\$@\"; }"
 done
 
-# ---------- Zellij ----------
-eval "$(zellij setup --generate-auto-start zsh)"
-
 # ---------- opencode ----------
 export PATH=/home/margey/.opencode/bin:$PATH

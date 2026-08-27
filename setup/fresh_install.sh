@@ -32,18 +32,6 @@ detect_os() {
 OS="$(detect_os)"
 
 # ---------- Helpers ----------
-Sudo() {
-    local firstArg=$1
-    if [ "$(type -t "$firstArg")" = function ]; then
-        shift && command sudo bash -c "$(declare -f "$firstArg");$firstArg $*"
-    elif [ "$(type -t "$firstArg")" = alias ]; then
-        alias sudo='\sudo '
-        eval "sudo $*"
-    else
-        command sudo "$@"
-    fi
-}
-
 cp_or_ln() {
     local src=$1
     local dst=$2
@@ -532,17 +520,6 @@ dotfile_setup() {
         cp_or_ln "$_f" "$HOME/.local/share/zinit/snippets/"
     done
     cp_or_ln "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
-
-    if [[ "$OS" != "mac" ]]; then
-        step "dotfiles: root symlinks"
-        sudo mkdir -p /root/.config
-        sudo mkdir -p /root/.local/share/zinit/snippets
-        Sudo cp_or_ln "$PROJECT_DIR/dotfiles/.config/kitty" /root/.config
-        for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
-            Sudo cp_or_ln "$_f" /root/.local/share/zinit/snippets/
-        done
-        Sudo cp_or_ln "$PROJECT_DIR/dotfiles/.zshrc" /root/.zshrc
-    fi
 
     if [[ "$PROFILE" == "server" ]]; then
         step "dotfiles: system config (fstab + crontab)"

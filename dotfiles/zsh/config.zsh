@@ -82,7 +82,7 @@ alias ddelimages='sudo docker rmi $(docker images -q)'
 alias derase='dstopcont ; drmcont ; ddelimages ; dvolprune ; dsysprune'
 alias dprune='ddelimages ; dprunevol ; dprunesys'
 
-if is_env linux && is_hostname Pistachio; then
+if is_env linux && is_server; then
   DOCKER_COMPOSE_T2="$HOME/docker/docker-compose.yml"
   DOCKER_COMPOSE_GATHERLY="$HOME/gatherly/docker-compose.yml"
   DOCKER_COMPOSE_GATHERLY_DEV="$HOME/gatherly-dev/docker-compose.yml"

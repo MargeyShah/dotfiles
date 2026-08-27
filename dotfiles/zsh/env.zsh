@@ -6,6 +6,9 @@ export HOSTS_WSL=( "Element-Windows" )
 export HOSTS_LINUX=( "Pistachio" "octopi" "Macadamia" )
 export HOSTS_MAC=( "FR95FPVKK6" )
 
+export HOSTS_SERVER=( "Pistachio" )
+export HOSTS_WORK_MAC=( "FR95FPVKK6" )
+
 # current_env -> "wsl" | "linux" | "mac" | "unknown"
 current_env() {
     local h="${HOST:-$(hostname)}"
@@ -25,7 +28,14 @@ is_env() {
     [[ "$(current_env)" == "$1" ]]
 }
 
-# is_hostname <name> — true if the current host matches
-is_hostname() {
-    [[ "${HOST:-$(hostname)}" == "$1" ]]
+# is_server — true if the current host is a server
+is_server() {
+    local h="${HOST:-$(hostname)}"
+    [[ " ${HOSTS_SERVER[@]} " == *" $h "* ]]
+}
+
+# is_work_mac — true if the current host is the work Mac
+is_work_mac() {
+    local h="${HOST:-$(hostname)}"
+    [[ " ${HOSTS_WORK_MAC[@]} " == *" $h "* ]]
 }

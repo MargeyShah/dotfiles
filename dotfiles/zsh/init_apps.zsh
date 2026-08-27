@@ -26,7 +26,7 @@ if is_env linux; then # Unix (non-NixOS)
 fi
 
 # ---------- Work (Mac) ----------
-if is_env mac && is_hostname FR95FPVKK6; then
+if is_env mac && is_work_mac; then
     export AWS_DEFAULT_PROFILE=HULU_SSO
     export DOOZER_HOME=/Users/margey.shah/Documents/test/doozer
     export VAULT_ADDR="https://secrets.staging.hulu.com"
@@ -45,4 +45,10 @@ if is_env mac && is_hostname FR95FPVKK6; then
     function ps2(){
         ssh -A $(printf '%s\n' "${PS2_BASTIONS[@]}" | fzf)
     }
+fi
+
+# ---------- Zellij ----------
+# Interactive multiplexer; not initialized on the server.
+if ! is_server; then
+    eval "$(zellij setup --generate-auto-start zsh)"
 fi

@@ -39,6 +39,10 @@ dotfiles() {
   $HOME/.scripts/setup/fresh_install.sh
 }
 
+nvim-up() {
+  bash "$HOME/.scripts/setup/fresh_install.sh" --nvim
+}
+
 # Local SSH hosts for quick connect (used by q())
 LOCAL_SSH_IPS=(
   "margey@Pistachio"

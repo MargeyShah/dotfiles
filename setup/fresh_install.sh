@@ -10,6 +10,9 @@ set -eE
 PYENV_VERSION=3.14.7
 KUBECTL_VERSION=v1.37
 
+NVIM_HANDROLL_REPO="https://github.com/joermo/dotfiles"
+NVIM_HANDROLL_SRC="${HOME}/.local/share/nvim-handroll"
+
 # ---------- Variables ----------
 PROJECT_DIR="${HOME}/.scripts"
 TEMP_DIR="${HOME}/install"
@@ -49,6 +52,18 @@ cp_or_ln() {
     else
         cp -rs "$src" "$dst"
     fi
+}
+
+# Pull the nvim-handroll config from joermo/dotfiles and symlink it to ~/.config/nvim.
+nvim_handroll() {
+    if [ ! -d "$NVIM_HANDROLL_SRC" ]; then
+        git clone --depth 1 "$NVIM_HANDROLL_REPO" "$NVIM_HANDROLL_SRC"
+    else
+        git -C "$NVIM_HANDROLL_SRC" pull --depth 1
+    fi
+    mkdir -p "$HOME/.config"
+    rm -rf "$HOME/.config/nvim"
+    ln -sfn "$NVIM_HANDROLL_SRC/nvim-handroll" "$HOME/.config/nvim"
 }
 
 # Generic "is this app installed" check (by command name).
@@ -179,6 +194,9 @@ install_common() {
         fi
         cd "$TEMP_DIR"
     fi
+
+    step "common: nvim config"
+    nvim_handroll
 
     step "common: cargo/rust"
     if ! pkg_exists cargo; then
@@ -463,7 +481,6 @@ dotfile_setup() {
     step "dotfiles: remove existing config"
     rm -f "$HOME/.zprofile"
     rm -f "$HOME/.zshrc"
-    rm -rf "$HOME/.config/nvim"
     rm -rf "$HOME/.config/kitty"
     rm -rf "$HOME/.local/share/zinit/snippets"
 
@@ -489,7 +506,7 @@ dotfile_setup() {
     fi
 
     step "dotfiles: symlink config"
-    cp_or_ln "$PROJECT_DIR/dotfiles/.config/nvim" "$HOME/.config"
+    nvim_handroll
     cp_or_ln "$PROJECT_DIR/dotfiles/.config/kitty" "$HOME/.config"
     for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
         cp_or_ln "$_f" "$HOME/.local/share/zinit/snippets/"
@@ -500,7 +517,6 @@ dotfile_setup() {
         step "dotfiles: root symlinks"
         sudo mkdir -p /root/.config
         sudo mkdir -p /root/.local/share/zinit/snippets
-        Sudo cp_or_ln "$PROJECT_DIR/dotfiles/.config/nvim/" /root/.config
         Sudo cp_or_ln "$PROJECT_DIR/dotfiles/.config/kitty" /root/.config
         for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
             Sudo cp_or_ln "$_f" /root/.local/share/zinit/snippets/
@@ -554,6 +570,12 @@ display_menu() {
 if [[ $(id -u) -eq 0 ]]; then
     echo "This script should not be run as root."
     exit 1
+fi
+
+# On-the-fly nvim-handroll pull only.
+if [[ "$1" == "--nvim" ]]; then
+    nvim_handroll
+    exit 0
 fi
 
 # Clean any leftover temp dir from a previous (failed) run, then start fresh.

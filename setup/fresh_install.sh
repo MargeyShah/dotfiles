@@ -344,6 +344,13 @@ app_starship() {
     fi
 }
 
+# coreutils provides gcp, needed by cp_or_ln / backup_path on macOS.
+app_coreutils() {
+    step "coreutils"
+    [[ "$FAMILY" == "mac" ]] || return 0
+    installed_by brew coreutils || brew install coreutils
+}
+
 # ORDER: app_cargo must run before app_zellij on ubuntu (cargo install).
 app_zellij() {
     step "zellij"
@@ -648,7 +655,7 @@ install_common() {
 # standalone "dotfiles" profile installs exactly what the dotfiles need.
 dotfile_deps() {
     install_apps dotfiles \
-        zinit brew starship zellij nvim_config
+        coreutils zinit brew starship zellij nvim_config
 }
 
 install_desktop() {
@@ -699,10 +706,6 @@ dotfile_setup() {
     step "dotfiles: create dirs"
     mkdir -p "$HOME/.config"
     mkdir -p "$HOME/.local/share/zinit/snippets"
-
-    if [[ "$OS" == "mac" ]]; then
-        brew install coreutils
-    fi
 
     step "dotfiles: prerequisites"
     dotfile_deps

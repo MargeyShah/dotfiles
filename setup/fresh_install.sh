@@ -308,18 +308,7 @@ app_fzf() {
 app_nvim() {
     step "nvim"
     pkg_exists nvim && return
-    if [[ "$FAMILY" == "mac" ]]; then
-        xcode-select --install 2>/dev/null || true
-        brew install ninja cmake gettext curl
-    fi
-    git clone https://github.com/neovim/neovim
-    cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
-    if [[ "$FAMILY" == "mac" ]]; then
-        sudo make install
-    else
-        cd build && cpack -G DEB && sudo dpkg -i nvim-linux-*.deb
-    fi
-    cd "$TEMP_DIR"
+    brew install neovim
 }
 
 app_nvim_config() {
@@ -384,9 +373,13 @@ app_pyenv_version() {
     export PYENV_ROOT="$HOME/.pyenv"
     export PATH="$PYENV_ROOT/bin:$PATH"
     eval "$(pyenv init -)"
+
+    trap - ERR
     pyenv install "$PYENV_VERSION" 2>/dev/null || true
-    pyenv global "$PYENV_VERSION"
     pyenv virtualenv "$PYENV_VERSION" neovim3 2>/dev/null || true
+    trap 'on_fail' ERR
+
+    pyenv global "$PYENV_VERSION"
     "$PYENV_ROOT/versions/$PYENV_VERSION/envs/neovim3/bin/python3" -m pip install pynvim
 }
 
@@ -401,11 +394,11 @@ app_nvm() {
     fi
 }
 
-app_nerdfonts() {
+app_nerd_fonts() {
     step "nerd fonts"
     if [[ "$FAMILY" == "mac" ]]; then
         cd "$HOME/Library/Fonts" && {
-            wget https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
+            curl -fLO https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
             unzip -o NerdFontsSymbolsOnly.zip
             rm -f readme.md NerdFontsSymbolsOnly.zip
         }
@@ -593,10 +586,13 @@ app_openssh() {
     sudo apt install openssh-server -y
     sudo systemctl enable ssh
     sudo systemctl start ssh
+
+    trap - ERR
     chmod 600 "$HOME/.ssh/id_rsa" 2>/dev/null || true
     chmod 600 "$HOME/.ssh/id_rsa.pub" 2>/dev/null || true
     eval "$(ssh-agent -s)"
     ssh-add "$HOME/.ssh/id_rsa" 2>/dev/null || true
+    trap 'on_fail' ERR
 }
 
 app_cron() {
@@ -639,6 +635,7 @@ install_common() {
         zinit \
         brew \
         fzf \
+        coreutils \
         nvim \
         nvim_config \
         cargo \
@@ -753,9 +750,9 @@ remove_snap() {
 display_menu() {
     echo "Detected OS: ${OS}"
     echo "Select a profile:"
-    echo "1. server   (Linux server)"
-    echo "2. desktop  (Linux desktop)"
-    echo "3. disney   (Mac work)"
+    echo "1. server    (Linux server)"
+    echo "2. Unix PC   (Linux desktop)"
+    echo "3. disney    (Mac work)"
     echo "4. dotfiles only"
     read -rp "Enter your choice: " choice
 }

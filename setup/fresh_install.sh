@@ -64,7 +64,7 @@ nvim_handroll() {
 
 # Generic "is this app installed" check (by command name).
 pkg_exists() {
-    command -v "$1" &>/dev/null
+    command -v "$1" >/dev/null 2>&1
 }
 
 # ---------- Granular failure tracking ----------
@@ -177,49 +177,67 @@ brew_tap() {
     fi
 }
 
-# Simple-app registry: logical name -> real package per manager.
+# Simple-app registry: logical name -> "manager:package" for the current FAMILY.
+# Resolved via case statements (bash 3.2-compatible; no associative arrays).
 # "Simple" = a direct apt/brew/cargo install with no repo/tap/key prep.
-declare -A PKG_APT=(
-    [duf]=duf [zoxide]=zoxide [fd]=fd-find [rsync]=rsync [neofetch]=neofetch
-)
-declare -A PKG_BREW=(
-    [duf]=duf [zoxide]=zoxide [fd]=fd [xh]=xh [dog]=doggo
-)
-declare -A PKG_CARGO=(
-    [tree-sitter]=tree-sitter-cli [procs]=procs [dust]=du-dust
-    [gping]=gping [lsd]=lsd [xh]=xh [dog]=doggo
-)
-# Cargo installs a crate but the resulting binary may differ (du-dust -> dust).
-declare -A CARGO_BIN=(
-    [tree-sitter]=tree-sitter [procs]=procs [dust]=dust
-    [gping]=gping [lsd]=lsd [xh]=xh [dog]=doggo
-)
-
-# manager_for <logical> -> echo apt|brew|cargo|"" for the current FAMILY.
-manager_for() {
+resolve_pkg() {
     local app="$1"
+    # Cargo-only apps (same crate regardless of FAMILY).
+    case "$app" in
+        tree-sitter) echo "cargo:tree-sitter-cli"; return ;;
+        procs)       echo "cargo:procs";          return ;;
+        dust)        echo "cargo:du-dust";        return ;;
+        gping)       echo "cargo:gping";          return ;;
+        lsd)         echo "cargo:lsd";            return ;;
+    esac
     case "$FAMILY" in
         mac)
-            [[ -n "${PKG_BREW[$app]:-}" ]]  && { echo brew;  return; }
-            [[ -n "${PKG_CARGO[$app]:-}" ]] && { echo cargo; return; }
+            case "$app" in
+                duf)    echo "brew:duf";    return ;;
+                zoxide) echo "brew:zoxide"; return ;;
+                fd)     echo "brew:fd";     return ;;
+                xh)     echo "brew:xh";     return ;;
+                dog)    echo "brew:doggo";  return ;;
+            esac
             ;;
         ubuntu)
-            [[ -n "${PKG_APT[$app]:-}" ]]   && { echo apt;   return; }
-            [[ -n "${PKG_CARGO[$app]:-}" ]] && { echo cargo; return; }
+            case "$app" in
+                duf)      echo "apt:duf";      return ;;
+                zoxide)   echo "apt:zoxide";   return ;;
+                fd)       echo "apt:fd-find";  return ;;
+                rsync)    echo "apt:rsync";    return ;;
+                neofetch) echo "apt:neofetch"; return ;;
+                xh)       echo "cargo:xh";     return ;;
+                dog)      echo "cargo:doggo";  return ;;
+            esac
             ;;
     esac
     echo ""
 }
 
+# Cargo installs a crate but the resulting binary may differ (du-dust -> dust).
+cargo_bin() {
+    case "$1" in
+        tree-sitter) echo tree-sitter ;;
+        procs)       echo procs ;;
+        dust)        echo dust ;;
+        gping)       echo gping ;;
+        lsd)         echo lsd ;;
+        xh)          echo xh ;;
+        dog)         echo doggo ;;
+    esac
+}
+
 # install_pkg <logical> — install a simple app via the manager chosen by FAMILY.
 install_pkg() {
-    local app="$1" m pkg bin
-    m="$(manager_for "$app")"
-    [ -z "$m" ] && return
+    local app="$1" spec m pkg bin
+    spec="$(resolve_pkg "$app")"
+    [ -z "$spec" ] && return
+    m="${spec%%:*}"; pkg="${spec#*:}"
     case "$m" in
-        apt)   pkg="${PKG_APT[$app]}";   installed_by apt "$pkg"   || sudo apt install -y "$pkg" ;;
-        brew)  pkg="${PKG_BREW[$app]}";  installed_by brew "$pkg"  || brew install "$pkg" ;;
-        cargo) pkg="${PKG_CARGO[$app]}"; bin="${CARGO_BIN[$app]:-$pkg}"; installed_by cargo "$bin" || cargo install "$pkg" ;;
+        apt)   installed_by apt "$pkg" || sudo apt install -y "$pkg" ;;
+        brew)  installed_by brew "$pkg" || brew install "$pkg" ;;
+        cargo) bin="$(cargo_bin "$app")"; [ -z "$bin" ] && bin="$pkg"; installed_by cargo "$bin" || cargo install "$pkg" ;;
     esac
 }
 

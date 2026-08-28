@@ -103,9 +103,15 @@ for cmd in pyenv python python2 python3 pip pip2 pip3; do
     eval "$cmd() { load-pyenv; command $cmd \"\$@\"; }"
 done
 
-# ---------- fzf ----------
-source <(fzf --zsh)
-[ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+# ---------- fzf (lazy) ----------
+__fzf_init() {
+    [[ -n "$_FZF_INIT_DONE" ]] && return
+    _FZF_INIT_DONE=1
+    command -v fzf >/dev/null 2>&1 || return
+    [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
+    command -v fzf >/dev/null 2>&1 && source <(fzf --zsh)
+}
+precmd_functions+=(__fzf_init)
 
 # ---------- Lazy NVM (nvm owns node) ----------
 export NVM_DIR="$HOME/.nvm"

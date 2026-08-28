@@ -652,7 +652,7 @@ install_common() {
 # standalone "dotfiles" profile installs exactly what the dotfiles need.
 dotfile_deps() {
     install_apps dotfiles \
-        coreutils zinit brew starship zellij nvim_config
+        coreutils zinit brew starship zellij nvim_config fzf
 }
 
 install_desktop() {

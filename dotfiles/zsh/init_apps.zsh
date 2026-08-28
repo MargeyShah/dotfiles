@@ -48,7 +48,17 @@ if is_env mac && is_work_mac; then
 fi
 
 # ---------- Zellij ----------
-# Interactive multiplexer; not initialized on the server.
+# Interactive multiplexer; auto-starts on terminal load (non-server only).
+# Deferred to first prompt so a missing binary / unsettled PATH never errors
+# at shell load.
+export ZELLIJ_AUTO_ATTACH=true
+
 if ! is_server; then
-    eval "$(zellij setup --generate-auto-start zsh)"
+    __zellij_autostart() {
+        [[ -n "$_ZELLIJ_INIT_DONE" ]] && return
+        _ZELLIJ_INIT_DONE=1
+        command -v zellij >/dev/null 2>&1 || return
+        eval "$(zellij setup --generate-auto-start zsh)"
+    }
+    precmd_functions+=(__zellij_autostart)
 fi

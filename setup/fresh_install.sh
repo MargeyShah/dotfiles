@@ -3,6 +3,10 @@
 # Auto-detects OS: mac (brew), wsl (apt), ubuntu (apt).
 # Granular failure handling: each step is tracked, overwritten files are
 # backed up to a temp dir, and the temp dir is only removed on full success.
+#
+# Apps are modeled as self-contained "objects" (app_<name>() functions) that
+# each own their OS branching, install method, and role gating. Profiles are
+# just ordered lists of app names run through the install_apps dispatcher.
 
 set -o pipefail
 set -eE
@@ -30,6 +34,10 @@ detect_os() {
     fi
 }
 OS="$(detect_os)"
+# FAMILY normalizes wsl -> ubuntu (both are apt-based). All install/manager
+# logic branches on FAMILY (mac | ubuntu) so future distros slot in cleanly.
+FAMILY="$OS"
+[[ "$FAMILY" == "wsl" ]] && FAMILY="ubuntu"
 
 # ---------- Helpers ----------
 cp_or_ln() {
@@ -57,15 +65,6 @@ nvim_handroll() {
 # Generic "is this app installed" check (by command name).
 pkg_exists() {
     command -v "$1" &>/dev/null
-}
-
-# Install a package via the appropriate package manager.
-pkg_install() {
-    if [[ "$OS" == "mac" ]]; then
-        brew install "$@"
-    else
-        sudo apt install -y "$@"
-    fi
 }
 
 # ---------- Granular failure tracking ----------
@@ -141,90 +140,245 @@ sync_system_config() {
     printf '%s\n' "$user_file" | sudo crontab -u "$cur_user" -
 }
 
-# ---------- Common install (all profiles) ----------
-install_common() {
-    step "common: base packages"
-    if [[ "$OS" != "mac" ]]; then
+# ---------- OOP install framework ----------
+
+# Manager-aware existence check. Uses the RESOLVED package name (not the binary),
+# so e.g. apt's "fd-find" is checked via dpkg, not `command -v fd`.
+installed_by() {
+    case "$1" in
+        apt)   dpkg -s "$2" >/dev/null 2>&1 ;;
+        brew)  brew list "$2" >/dev/null 2>&1 ;;
+        cargo) command -v "$2" >/dev/null 2>&1 ;;
+    esac
+}
+
+# Repo/tap boilerplate — the "objects" scaffold, OS-branch ready.
+# apt_repo writes a deb822 .sources file (modern apt format).
+apt_repo() {
+    local name="$1" keyring="$2" uri="$3" suite="$4" arch="$5"; shift 5
+    sudo mkdir -p /etc/apt/keyrings
+    sudo tee "/etc/apt/sources.list.d/${name}.sources" >/dev/null <<EOF
+Types: deb
+URIs: $uri
+Suites: $suite
+Components: $*
+Architectures: $arch
+Signed-By: $keyring
+EOF
+    sudo apt update
+}
+
+# brew_tap <tap> [url]
+brew_tap() {
+    if [ -n "$2" ]; then
+        brew tap "$1" "$2"
+    else
+        brew tap "$1"
+    fi
+}
+
+# Simple-app registry: logical name -> real package per manager.
+# "Simple" = a direct apt/brew/cargo install with no repo/tap/key prep.
+declare -A PKG_APT=(
+    [duf]=duf [zoxide]=zoxide [fd]=fd-find [rsync]=rsync [neofetch]=neofetch
+)
+declare -A PKG_BREW=(
+    [duf]=duf [zoxide]=zoxide [fd]=fd [xh]=xh [dog]=doggo
+)
+declare -A PKG_CARGO=(
+    [tree-sitter]=tree-sitter-cli [procs]=procs [dust]=du-dust
+    [gping]=gping [lsd]=lsd [xh]=xh [dog]=doggo
+)
+# Cargo installs a crate but the resulting binary may differ (du-dust -> dust).
+declare -A CARGO_BIN=(
+    [tree-sitter]=tree-sitter [procs]=procs [dust]=dust
+    [gping]=gping [lsd]=lsd [xh]=xh [dog]=doggo
+)
+
+# manager_for <logical> -> echo apt|brew|cargo|"" for the current FAMILY.
+manager_for() {
+    local app="$1"
+    case "$FAMILY" in
+        mac)
+            [[ -n "${PKG_BREW[$app]:-}" ]]  && { echo brew;  return; }
+            [[ -n "${PKG_CARGO[$app]:-}" ]] && { echo cargo; return; }
+            ;;
+        ubuntu)
+            [[ -n "${PKG_APT[$app]:-}" ]]   && { echo apt;   return; }
+            [[ -n "${PKG_CARGO[$app]:-}" ]] && { echo cargo; return; }
+            ;;
+    esac
+    echo ""
+}
+
+# install_pkg <logical> — install a simple app via the manager chosen by FAMILY.
+install_pkg() {
+    local app="$1" m pkg bin
+    m="$(manager_for "$app")"
+    [ -z "$m" ] && return
+    case "$m" in
+        apt)   pkg="${PKG_APT[$app]}";   installed_by apt "$pkg"   || sudo apt install -y "$pkg" ;;
+        brew)  pkg="${PKG_BREW[$app]}";  installed_by brew "$pkg"  || brew install "$pkg" ;;
+        cargo) pkg="${PKG_CARGO[$app]}"; bin="${CARGO_BIN[$app]:-$pkg}"; installed_by cargo "$bin" || cargo install "$pkg" ;;
+    esac
+}
+
+# Dispatcher: run each app function in order.
+install_apps() {
+    local label="$1"; shift
+    for app in "$@"; do
+        "app_$app"
+    done
+}
+
+# ---------- App objects ----------
+
+# --- Simple registry wrappers (option A: explicit) ---
+app_duf()      { step "duf";      install_pkg duf; }
+app_zoxide()   { step "zoxide";   install_pkg zoxide; }
+app_fd()       { step "fd";       install_pkg fd; }
+app_rsync()    { step "rsync";    install_pkg rsync; }
+app_neofetch() { step "neofetch"; install_pkg neofetch; }
+app_procs()    { step "procs";    install_pkg procs; }
+app_dust()     { step "dust";     install_pkg dust; }
+app_gping()    { step "gping";    install_pkg gping; }
+app_lsd()      { step "lsd";      install_pkg lsd; }
+app_xh()       { step "xh";       install_pkg xh; }
+app_dog()      { step "dog";      install_pkg dog; }
+app_tree_sitter() { step "tree-sitter"; install_pkg tree-sitter; }
+
+# --- Bespoke apps ---
+
+app_base() {
+    step "base packages"
+    if [[ "$FAMILY" != "mac" ]]; then
         sudo apt update -y
         sudo apt upgrade -y
         sudo apt install -y build-essential procps curl file gzip unzip wget cpio \
             ca-certificates zsh apt-transport-https gnupg git gettext ninja-build cmake gpg \
             libclang-dev
     fi
+}
 
-    step "common: zinit"
+app_zinit() {
+    step "zinit"
     if [ ! -f "$HOME/.local/share/zinit/zinit.git/zinit.zsh" ]; then
         mkdir -p "$HOME/.local/share/zinit"
         git clone https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git"
     fi
+}
 
-    step "common: homebrew"
-    if ! pkg_exists brew; then
-        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-    fi
+app_brew() {
+    step "homebrew"
+    pkg_exists brew && return
+    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+}
 
-    step "common: fzf"
-    if ! pkg_exists fzf && [ ! -d "$HOME/.fzf" ]; then
-        if [[ "$OS" == "mac" ]]; then
-            brew install fzf
-            "$(brew --prefix)/opt/fzf/install" --all
-        else
-            git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
-            "$HOME/.fzf/install"
-        fi
-    fi
-
-    step "common: nvim"
-    if ! pkg_exists nvim; then
-        if [[ "$OS" == "mac" ]]; then
-            xcode-select --install 2>/dev/null || true
-            brew install ninja cmake gettext curl
-        fi
-        git clone https://github.com/neovim/neovim
-        cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
-        if [[ "$OS" == "mac" ]]; then
-            sudo make install
-        else
-            cd build && cpack -G DEB && sudo dpkg -i nvim-linux-*.deb
-        fi
-        cd "$TEMP_DIR"
-    fi
-
-    step "common: nvim config"
-    nvim_handroll
-
-    step "common: cargo/rust"
-    if ! pkg_exists cargo; then
-        curl https://sh.rustup.rs -sSf | sh -s -- -y
-        source "$HOME/.cargo/env"
-    fi
-
-    step "common: cargo QOL tools"
-    if ! pkg_exists tree-sitter; then cargo install tree-sitter-cli; fi
-    if ! pkg_exists procs; then cargo install procs; fi
-    if ! pkg_exists dust; then cargo install du-dust; fi
-    if ! pkg_exists gping; then cargo install gping; fi
-    if ! pkg_exists lsd; then cargo install lsd; fi
-
-    step "common: QOL packages"
-    if [[ "$OS" == "mac" ]]; then
-        for p in duf zoxide fd xh dog; do
-            pkg_exists "$p" || brew install "$p"
-        done
+app_fzf() {
+    step "fzf"
+    pkg_exists fzf && return
+    [ -d "$HOME/.fzf" ] && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        brew install fzf
+        "$(brew --prefix)/opt/fzf/install" --all
     else
-        sudo apt install -y duf zoxide fd-find
-        if ! pkg_exists xh; then
-            # xh (http client) - install via cargo (the install.sh is interactive)
-            cargo install xh
-        fi
-        if ! pkg_exists dog; then
-            # dog (dns client, renamed to doggo) - install via cargo as it's not in apt
-            cargo install doggo
-        fi
+        git clone --depth 1 https://github.com/junegunn/fzf.git "$HOME/.fzf"
+        "$HOME/.fzf/install"
     fi
+}
 
-    step "common: nerd fonts"
-    if [[ "$OS" == "mac" ]]; then
+app_nvim() {
+    step "nvim"
+    pkg_exists nvim && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        xcode-select --install 2>/dev/null || true
+        brew install ninja cmake gettext curl
+    fi
+    git clone https://github.com/neovim/neovim
+    cd neovim && make CMAKE_BUILD_TYPE=RelWithDebInfo
+    if [[ "$FAMILY" == "mac" ]]; then
+        sudo make install
+    else
+        cd build && cpack -G DEB && sudo dpkg -i nvim-linux-*.deb
+    fi
+    cd "$TEMP_DIR"
+}
+
+app_nvim_config() {
+    step "nvim config"
+    nvim_handroll
+}
+
+app_cargo() {
+    step "cargo/rust"
+    pkg_exists cargo && return
+    curl https://sh.rustup.rs -sSf | sh -s -- -y
+    source "$HOME/.cargo/env"
+}
+
+app_starship() {
+    step "starship"
+    pkg_exists starship && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        brew install starship
+    else
+        curl -sS https://starship.rs/install.sh | sh -s -- -y
+    fi
+}
+
+# ORDER: app_cargo must run before app_zellij on ubuntu (cargo install).
+app_zellij() {
+    step "zellij"
+    # Not on the server (interactive multiplexer for desktop/DWM hosts).
+    [[ "$PROFILE" == "server" ]] && return
+    pkg_exists zellij && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        brew install zellij
+    else
+        cargo install zellij
+    fi
+}
+
+app_pyenv() {
+    step "pyenv"
+    pkg_exists pyenv && return
+    [ -d "$HOME/.pyenv" ] && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        brew install pyenv pyenv-virtualenv
+    else
+        sudo apt install -y make libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
+            libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils tk-dev \
+            libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
+        curl https://pyenv.run | bash
+    fi
+}
+
+# ORDER: app_pyenv must run before app_pyenv_version.
+app_pyenv_version() {
+    step "pyenv version + neovim"
+    export PYENV_ROOT="$HOME/.pyenv"
+    export PATH="$PYENV_ROOT/bin:$PATH"
+    eval "$(pyenv init -)"
+    pyenv install "$PYENV_VERSION" 2>/dev/null || true
+    pyenv global "$PYENV_VERSION"
+    pyenv virtualenv "$PYENV_VERSION" neovim3 2>/dev/null || true
+    "$PYENV_ROOT/versions/$PYENV_VERSION/envs/neovim3/bin/python3" -m pip install pynvim
+}
+
+app_nvm() {
+    step "nvm"
+    pkg_exists nvm && return
+    [ -d "$HOME/.nvm" ] && return
+    if [[ "$FAMILY" == "mac" ]]; then
+        brew install nvm
+    else
+        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+    fi
+}
+
+app_nerdfonts() {
+    step "nerd fonts"
+    if [[ "$FAMILY" == "mac" ]]; then
         cd "$HOME/Library/Fonts" && {
             wget https://github.com/ryanoasis/nerd-fonts/releases/latest/download/NerdFontsSymbolsOnly.zip
             unzip -o NerdFontsSymbolsOnly.zip
@@ -239,65 +393,32 @@ install_common() {
         rm -f UbuntuMono.zip
         cd "$TEMP_DIR"
     fi
-
-    step "common: pyenv"
-    if ! pkg_exists pyenv && [ ! -d "$HOME/.pyenv" ]; then
-        if [[ "$OS" == "mac" ]]; then
-            brew install pyenv pyenv-virtualenv
-        else
-            sudo apt install -y make libssl-dev zlib1g-dev libbz2-dev libreadline-dev \
-                libsqlite3-dev wget curl llvm libncursesw5-dev xz-utils tk-dev \
-                libxml2-dev libxmlsec1-dev libffi-dev liblzma-dev
-            curl https://pyenv.run | bash
-        fi
-    fi
-
-    step "common: nvm"
-    if ! pkg_exists nvm && [ ! -d "$HOME/.nvm" ]; then
-        if [[ "$OS" == "mac" ]]; then
-            brew install nvm
-        else
-            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
-        fi
-    fi
-
-    step "common: pyenv version + neovim"
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)"
-    pyenv install "$PYENV_VERSION" 2>/dev/null || true
-    pyenv global "$PYENV_VERSION"
-    pyenv virtualenv "$PYENV_VERSION" neovim3 2>/dev/null || true
-    "$PYENV_ROOT/versions/$PYENV_VERSION/envs/neovim3/bin/python3" -m pip install pynvim
 }
 
-# ---------- Desktop profile (Linux) ----------
-install_desktop() {
-    step "desktop: element-desktop"
-    if ! pkg_exists element-desktop; then
-        wget -qO- https://packages.element.io/debian/element-io-archive-keyring.gpg | sudo tee /usr/share/keyrings/element-io-archive-keyring.gpg > /dev/null
-        echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
-        sudo apt update
-        sudo apt install element-desktop -y
-    fi
+# --- Repo apps (ubuntu-only for now; OOP-ready for future OS) ---
 
-    step "desktop: xone (xbox controller)"
-    if ! pkg_exists xone; then
-        echo "Installing Xbox Wireless Dongle support, please unplug your dongle."
-        echo "Press enter once you've validated it is unplugged"
-        read -r _ || true
-        git clone https://github.com/medusalix/xone
-        cd xone
-        ./install.sh --release
-        xone-get-firmware.sh
-        cd "$TEMP_DIR"
-    fi
+app_element() {
+    step "element-desktop"
+    pkg_exists element-desktop && return
+    case "$FAMILY" in
+        ubuntu)
+            wget -qO- https://packages.element.io/debian/element-io-archive-keyring.gpg | sudo tee /usr/share/keyrings/element-io-archive-keyring.gpg > /dev/null
+            echo "deb [signed-by=/usr/share/keyrings/element-io-archive-keyring.gpg] https://packages.element.io/debian/ default main" | sudo tee /etc/apt/sources.list.d/element-io.list
+            sudo apt update
+            sudo apt install element-desktop -y
+            ;;
+        mac) : ;; # TODO: brew install --cask element
+    esac
+}
 
-    step "desktop: vscode"
-    if ! pkg_exists code; then
-        wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
-            | sudo gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
-        sudo tee /etc/apt/sources.list.d/vscode.sources <<EOF
+app_vscode() {
+    step "vscode"
+    pkg_exists code && return
+    case "$FAMILY" in
+        ubuntu)
+            wget -qO- https://packages.microsoft.com/keys/microsoft.asc \
+                | sudo gpg --dearmor -o /usr/share/keyrings/microsoft.gpg
+            sudo tee /etc/apt/sources.list.d/vscode.sources <<EOF
 Types: deb
 URIs: https://packages.microsoft.com/repos/code
 Suites: stable
@@ -305,57 +426,91 @@ Components: main
 Architectures: amd64,arm64,armhf
 Signed-By: /usr/share/keyrings/microsoft.gpg
 EOF
-        sudo apt update
-        sudo apt install -y code
-    fi
-
-step "desktop: neofetch"
-    if ! pkg_exists neofetch; then
-        pkg_install neofetch
-    fi
-
-    step "desktop: rsync"
-    if ! pkg_exists rsync; then
-        sudo apt install rsync -y
-    fi
-
-    step "desktop: zellij"
-    if ! pkg_exists zellij; then
-        if [[ "$OS" == "mac" ]]; then
-            brew install zellij
-        else
-            cargo install zellij
-        fi
-    fi
+            sudo apt update
+            sudo apt install -y code
+            ;;
+        mac) : ;; # TODO: brew install --cask visual-studio-code
+    esac
 }
 
-# ---------- Server profile (Linux) ----------
-install_server() {
-    step "server: just"
-    if ! pkg_exists just; then
-        git clone 'https://mpr.makedeb.org/just'
-        cd just
-        makedeb -si
-        cd "$TEMP_DIR"
-    fi
+app_docker() {
+    step "docker"
+    pkg_exists docker && return
+    case "$FAMILY" in
+        ubuntu)
+            sudo install -m 0755 -d /etc/apt/keyrings
+            sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
+            sudo chmod a+r /etc/apt/keyrings/docker.asc
+            sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
+Types: deb
+URIs: https://download.docker.com/linux/ubuntu
+Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
+Components: stable
+Architectures: $(dpkg --print-architecture)
+Signed-By: /etc/apt/keyrings/docker.asc
+EOF
+            sudo apt update
+            sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
+            ;;
+        mac) : ;; # TODO: brew install --cask docker
+    esac
+}
 
-    step "server: sdkman"
-    if ! pkg_exists sdk; then
-        curl -s "https://get.sdkman.io" | bash
-    fi
+app_gh() {
+    step "gh"
+    pkg_exists gh && return
+    case "$FAMILY" in
+        ubuntu)
+            sudo mkdir -p -m 755 /etc/apt/keyrings
+            out=$(mktemp)
+            wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
+                && cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
+                && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
+                && rm -f "$out"
+            echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
+                | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
+            sudo apt update
+            sudo apt install gh -y
+            ;;
+        mac) brew install gh ;;
+    esac
+}
 
-    step "server: virtualbox"
-    if ! pkg_exists vboxmanage; then
-        wget -qO- https://www.virtualbox.org/download/oracle_vbox_2016.asc \
-            | sudo gpg --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg --dearmor
-        echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" \
-            | sudo tee /etc/apt/sources.list.d/virtualbox.list
-        sudo apt update
-        sudo apt install -y linux-headers-"$(uname -r)" dkms
-        echo "virtualbox virtualbox/module-compilation-allowed boolean true" \
-            | sudo debconf-set-selections
-        sudo apt install -y virtualbox-7.1
-    fi
+app_kubectl() {
+    step "kubectl"
+    pkg_exists kubectl && return
+    case "$FAMILY" in
+        ubuntu)
+            sudo mkdir -p /etc/apt/keyrings
+            curl -fsSL "https://pkgs.k8s.io/core:/stable:/${KUBECTL_VERSION}/deb/Release.key" \
+                | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+            sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
+            echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBECTL_VERSION}/deb/ /" \
+                | sudo tee /etc/apt/sources.list.d/kubernetes.list
+            sudo apt update
+            sudo apt install kubectl -y
+            ;;
+        mac) brew install kubectl ;;
+    esac
+}
+
+app_vbox() {
+    step "virtualbox"
+    pkg_exists vboxmanage && return
+    case "$FAMILY" in
+        ubuntu)
+            wget -qO- https://www.virtualbox.org/download/oracle_vbox_2016.asc \
+                | sudo gpg --yes --output /usr/share/keyrings/oracle-virtualbox-2016.gpg --dearmor
+            echo "deb [arch=amd64 signed-by=/usr/share/keyrings/oracle-virtualbox-2016.gpg] https://download.virtualbox.org/virtualbox/debian $(lsb_release -sc) contrib" \
+                | sudo tee /etc/apt/sources.list.d/virtualbox.list
+            sudo apt update
+            sudo apt install -y linux-headers-"$(uname -r)" dkms
+            echo "virtualbox virtualbox/module-compilation-allowed boolean true" \
+                | sudo debconf-set-selections
+            sudo apt install -y virtualbox-7.1
+            ;;
+        mac) : ;; # TODO: brew install --cask virtualbox
+    esac
 
     if ! sudo VBoxManage list extpacks 2>/dev/null | grep -q "Extension Pack"; then
         cd "$TEMP_DIR"
@@ -366,64 +521,50 @@ install_server() {
         echo y | sudo VBoxManage extpack install "Oracle_VirtualBox_Extension_Pack-${VBOX_BUILD}-${VBOX_REV}.vbox-extpack"
         cd "$PROJECT_DIR"
     fi
+}
 
-    step "server: kubectl"
-    if ! pkg_exists kubectl; then
-        sudo mkdir -p /etc/apt/keyrings
-        curl -fsSL "https://pkgs.k8s.io/core:/stable:/${KUBECTL_VERSION}/deb/Release.key" \
-            | sudo gpg --dearmor -o /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-        sudo chmod 644 /etc/apt/keyrings/kubernetes-apt-keyring.gpg
-        echo "deb [signed-by=/etc/apt/keyrings/kubernetes-apt-keyring.gpg] https://pkgs.k8s.io/core:/stable:/${KUBECTL_VERSION}/deb/ /" \
-            | sudo tee /etc/apt/sources.list.d/kubernetes.list
-        sudo apt update
-        sudo apt install kubectl -y
-    fi
+app_just() {
+    step "just"
+    pkg_exists just && return
+    case "$FAMILY" in
+        ubuntu)
+            git clone 'https://mpr.makedeb.org/just'
+            cd just
+            makedeb -si
+            cd "$TEMP_DIR"
+            ;;
+        mac) brew install just ;;
+    esac
+}
 
-    step "server: awscli"
-    if ! pkg_exists aws; then
-        curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
-        unzip awscliv2.zip
-        sudo ./aws/install
-    fi
+app_aws() {
+    step "awscli"
+    pkg_exists aws && return
+    case "$FAMILY" in
+        ubuntu)
+            curl "https://awscli.amazonaws.com/awscli-exe-linux-x86_64.zip" -o "awscliv2.zip"
+            unzip awscliv2.zip
+            sudo ./aws/install
+            ;;
+        mac) brew install awscli ;;
+    esac
+}
 
-    step "server: gh"
-    if ! pkg_exists gh; then
-        sudo mkdir -p -m 755 /etc/apt/keyrings
-        out=$(mktemp)
-        wget -nv -O"$out" https://cli.github.com/packages/githubcli-archive-keyring.gpg \
-            && cat "$out" | sudo tee /etc/apt/keyrings/githubcli-archive-keyring.gpg > /dev/null \
-            && sudo chmod go+r /etc/apt/keyrings/githubcli-archive-keyring.gpg \
-            && rm -f "$out"
-        echo "deb [arch=$(dpkg --print-architecture) signed-by=/etc/apt/keyrings/githubcli-archive-keyring.gpg] https://cli.github.com/packages stable main" \
-            | sudo tee /etc/apt/sources.list.d/github-cli.list > /dev/null
-        sudo apt update
-        sudo apt install gh -y
-    fi
+app_speedtest() {
+    step "speedtest"
+    pkg_exists speedtest && return
+    curl -s https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz | tar xz
+    sudo mv speedtest /usr/local/bin/
+}
 
-    step "server: speedtest"
-    if ! pkg_exists speedtest; then
-        curl -s https://install.speedtest.net/app/cli/ookla-speedtest-1.2.0-linux-x86_64.tgz | tar xz
-        sudo mv speedtest /usr/local/bin/
-    fi
+app_sdkman() {
+    step "sdkman"
+    pkg_exists sdk && return
+    curl -s "https://get.sdkman.io" | bash
+}
 
-    step "server: docker"
-    if ! pkg_exists docker; then
-        sudo install -m 0755 -d /etc/apt/keyrings
-        sudo curl -fsSL https://download.docker.com/linux/ubuntu/gpg -o /etc/apt/keyrings/docker.asc
-        sudo chmod a+r /etc/apt/keyrings/docker.asc
-        sudo tee /etc/apt/sources.list.d/docker.sources <<EOF
-Types: deb
-URIs: https://download.docker.com/linux/ubuntu
-Suites: $(. /etc/os-release && echo "${UBUNTU_CODENAME:-$VERSION_CODENAME}")
-Components: stable
-Architectures: $(dpkg --print-architecture)
-Signed-By: /etc/apt/keyrings/docker.asc
-EOF
-        sudo apt update
-        sudo apt install docker-ce docker-ce-cli containerd.io docker-buildx-plugin docker-compose-plugin -y
-    fi
-
-    step "server: openssh-server + ssh-agent"
+app_openssh() {
+    step "openssh-server + ssh-agent"
     sudo apt install openssh-server -y
     sudo systemctl enable ssh
     sudo systemctl start ssh
@@ -431,37 +572,82 @@ EOF
     chmod 600 "$HOME/.ssh/id_rsa.pub" 2>/dev/null || true
     eval "$(ssh-agent -s)"
     ssh-add "$HOME/.ssh/id_rsa" 2>/dev/null || true
+}
 
-step "server: crontab"
+app_cron() {
+    step "crontab"
     if ! pkg_exists crontab; then
         sudo apt install cron -y
     fi
     sync_system_config
 }
 
-# ---------- Disney (work) profile (Mac) ----------
+# --- Disney (work Mac) apps ---
+
+app_poetry() {
+    step "poetry"
+    pkg_exists poetry && return
+    brew install poetry
+}
+
+app_devx() {
+    step "disney: brew taps + tools"
+    brew_tap devproductivity/devx-cli git@github.prod.hulu.com:devproductivity/homebrew-devx-cli.git
+    brew_tap ced/homebrew-ced git@github.bamtech.co:ced/homebrew-ced.git
+    for p in jfrog-cli kubectl awscli gh devx-cli frogger; do
+        pkg_exists "$p" || brew install "$p"
+    done
+}
+
+app_kitty() {
+    step "kitty"
+    pkg_exists kitty && return
+    curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
+}
+
+# ---------- Profiles (ordered app lists) ----------
+
+# ORDER matters within these lists (see inline comments).
+install_common() {
+    install_apps common \
+        base \
+        zinit \
+        brew \
+        fzf \
+        nvim \
+        nvim_config \
+        cargo \
+        starship \
+        zellij \
+        pyenv \
+        pyenv_version \
+        nvm \
+        nerd_fonts \
+        duf zoxide fd xh dog procs dust gping lsd tree_sitter
+}
+
+# Dotfiles-only dependencies: the same app objects as install_common, so the
+# standalone "dotfiles" profile installs exactly what the dotfiles need.
+dotfile_deps() {
+    install_apps dotfiles \
+        zinit brew starship zellij nvim_config
+}
+
+install_desktop() {
+    install_apps desktop \
+        element vscode rsync neofetch
+}
+
+install_server() {
+    install_apps server \
+        just sdkman vbox kubectl gh aws speedtest docker openssh cron
+}
+
+# Disney = work Mac profile. Only runs its apps when work-profiled.
 install_disney() {
-    step "disney: poetry"
-    if ! pkg_exists poetry; then brew install poetry; fi
-
-    step "disney: brew taps"
-    brew tap devproductivity/devx-cli git@github.prod.hulu.com:devproductivity/homebrew-devx-cli.git
-    brew tap ced/homebrew-ced git@github.bamtech.co:ced/homebrew-ced.git
-
-    step "disney: external tools"
-    for p in jfrog-cli kubectl awscli gh; do
-        pkg_exists "$p" || brew install "$p"
-    done
-
-    step "disney: internal tools"
-    for p in devx-cli frogger; do
-        pkg_exists "$p" || brew install "$p"
-    done
-
-    step "disney: kitty"
-    if ! pkg_exists kitty; then
-        curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
-    fi
+    [[ "$PROFILE" == "disney" ]] || return
+    install_apps disney \
+        poetry devx kitty
 }
 
 # ---------- Dotfiles ----------
@@ -501,17 +687,7 @@ dotfile_setup() {
     fi
 
     step "dotfiles: prerequisites"
-    if ! pkg_exists starship; then
-        if [[ "$OS" == "mac" ]]; then
-            brew install starship
-        else
-            curl -sS https://starship.rs/install.sh | sh -s -- -y
-        fi
-    fi
-    if [ ! -f "$HOME/.local/share/zinit/zinit.git/zinit.zsh" ]; then
-        mkdir -p "$HOME/.local/share/zinit"
-        git clone https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git"
-    fi
+    dotfile_deps
 
     step "dotfiles: symlink config"
     nvim_handroll

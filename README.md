@@ -12,4 +12,4 @@ cd .dotfiles/setup
 ```
 
 
-`nvimup` will update joermo dotfiles for nvim
+`nvimup` will update nvim configs from the https://github.com/joermo/dotfiles remote

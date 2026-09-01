@@ -107,7 +107,6 @@ done
 __fzf_init() {
     [[ -n "$_FZF_INIT_DONE" ]] && return
     _FZF_INIT_DONE=1
-    command -v fzf >/dev/null 2>&1 || return
     [ -f ~/.fzf.zsh ] && source ~/.fzf.zsh
     command -v fzf >/dev/null 2>&1 && source <(fzf --zsh)
 }

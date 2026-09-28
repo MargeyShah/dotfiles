@@ -53,7 +53,7 @@ fi
 # Interactive multiplexer; auto-starts on terminal load (non-server only).
 # Started eagerly so the terminal has reported its real size before zellij
 # creates its session (deferring to precmd caused a tiny window on WSL).
-export ZELLIJ_AUTO_ATTACH=true
+# No ZELLIJ_AUTO_ATTACH: each terminal tab starts its own fresh session.
 
 if ! is_server; then
     command -v zellij >/dev/null 2>&1 && eval "$(zellij setup --generate-auto-start zsh)"

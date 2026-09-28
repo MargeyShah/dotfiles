@@ -13,7 +13,7 @@ if is_env mac; then # Mac
     eval "$(/opt/homebrew/bin/brew shellenv)"
 fi
 
-if is_env linux; then # Unix (non-NixOS)
+if is_env linux || is_env wsl; then # Unix (non-NixOS) incl. WSL
     # Not NIX OS, import brew
     if ! ( [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null ); then
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
@@ -49,16 +49,10 @@ fi
 
 # ---------- Zellij ----------
 # Interactive multiplexer; auto-starts on terminal load (non-server only).
-# Deferred to first prompt so a missing binary / unsettled PATH never errors
-# at shell load.
+# Started eagerly so the terminal has reported its real size before zellij
+# creates its session (deferring to precmd caused a tiny window on WSL).
 export ZELLIJ_AUTO_ATTACH=true
 
 if ! is_server; then
-    __zellij_autostart() {
-        [[ -n "$_ZELLIJ_INIT_DONE" ]] && return
-        _ZELLIJ_INIT_DONE=1
-        command -v zellij >/dev/null 2>&1 || return
-        eval "$(zellij setup --generate-auto-start zsh)"
-    }
-    precmd_functions+=(__zellij_autostart)
+    command -v zellij >/dev/null 2>&1 && eval "$(zellij setup --generate-auto-start zsh)"
 fi

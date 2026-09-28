@@ -1,6 +1,6 @@
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
-export PATH="$PATH:/opt/nvim-linux-x86_64/bin"
+# nvim is installed via Homebrew (see init_apps.zsh brew shellenv).
 
 # ---------- Zinit (Plugin Manager) ----------
 export ZINIT_HOME="$HOME/.local/share/zinit/zinit.git"

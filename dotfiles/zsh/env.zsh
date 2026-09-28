@@ -2,10 +2,13 @@
 # Define the hostname lists for each environment class.
 # These drive which snippets/config load on a given machine.
 
+# OS-class lists (exactly one matches per host).
 export HOSTS_WSL=( "Element-Windows" )
 export HOSTS_LINUX=( "Pistachio" "octopi" "Macadamia" )
-export HOSTS_MAC=( "FR95FPVKK6" )
+export HOSTS_MAC=( "FR95FPVKK6" "Pine" )
 
+# Role lists — subsets of the OS-class lists above (a host in a role list
+# must also be in its OS-class list, e.g. server ⊂ linux, work_mac ⊂ mac).
 export HOSTS_SERVER=( "Pistachio" )
 export HOSTS_WORK_MAC=( "FR95FPVKK6" )
 

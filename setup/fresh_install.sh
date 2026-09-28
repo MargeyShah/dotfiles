@@ -10,6 +10,8 @@
 
 set -o pipefail
 set -eE
+# Unmatched globs expand to nothing instead of a literal `*`.
+shopt -s nullglob
 
 PYENV_VERSION=3.14.7
 KUBECTL_VERSION=v1.37
@@ -40,14 +42,12 @@ FAMILY="$OS"
 [[ "$FAMILY" == "wsl" ]] && FAMILY="ubuntu"
 
 # ---------- Helpers ----------
-cp_or_ln() {
+# Symlink src -> dst. ln -sfn replaces an existing symlink/file in place, so no
+# coreutils/gcp is needed and there is no `cp -s` directory-nesting weirdness.
+link() {
     local src=$1
     local dst=$2
-    if [[ "$OS" == "mac" ]]; then
-        gcp -Rs "$src" "$dst"
-    else
-        cp -rs "$src" "$dst"
-    fi
+    ln -sfn "$src" "$dst"
 }
 
 # Pull the nvim-handroll config from joermo/dotfiles and symlink it to ~/.config/nvim.
@@ -76,11 +76,9 @@ backup_path() {
     local p="$1"
     if [ -e "$p" ]; then
         mkdir -p "$BACKUP_DIR"
-        if [[ "$OS" == "mac" ]]; then
-            gcp -R "$p" "$BACKUP_DIR/" 2>/dev/null || true
-        else
-            cp -a "$p" "$BACKUP_DIR/" 2>/dev/null || true
-        fi
+        # Plain `cp` (built-in on every OS) so backups work before coreutils is
+        # installed on a fresh mac.
+        cp -R "$p" "$BACKUP_DIR/" 2>/dev/null || true
     fi
 }
 
@@ -193,11 +191,13 @@ resolve_pkg() {
     case "$FAMILY" in
         mac)
             case "$app" in
-                duf)    echo "brew:duf";    return ;;
-                zoxide) echo "brew:zoxide"; return ;;
-                fd)     echo "brew:fd";     return ;;
-                xh)     echo "brew:xh";     return ;;
-                dog)    echo "brew:doggo";  return ;;
+                duf)      echo "brew:duf";      return ;;
+                zoxide)   echo "brew:zoxide";   return ;;
+                fd)       echo "brew:fd";       return ;;
+                ripgrep)  echo "brew:ripgrep";  return ;;
+                luarocks) echo "brew:luarocks"; return ;;
+                xh)       echo "brew:xh";       return ;;
+                dog)      echo "brew:doggo";    return ;;
             esac
             ;;
         ubuntu)
@@ -205,6 +205,8 @@ resolve_pkg() {
                 duf)      echo "apt:duf";      return ;;
                 zoxide)   echo "apt:zoxide";   return ;;
                 fd)       echo "apt:fd-find";  return ;;
+                ripgrep)  echo "apt:ripgrep";  return ;;
+                luarocks) echo "apt:luarocks"; return ;;
                 rsync)    echo "apt:rsync";    return ;;
                 neofetch) echo "apt:neofetch"; return ;;
                 xh)       echo "cargo:xh";     return ;;
@@ -255,6 +257,8 @@ install_apps() {
 app_duf()      { step "duf";      install_pkg duf; }
 app_zoxide()   { step "zoxide";   install_pkg zoxide; }
 app_fd()       { step "fd";       install_pkg fd; }
+app_ripgrep()  { step "ripgrep";  install_pkg ripgrep; }
+app_luarocks() { step "luarocks"; install_pkg luarocks; }
 app_rsync()    { step "rsync";    install_pkg rsync; }
 app_neofetch() { step "neofetch"; install_pkg neofetch; }
 app_procs()    { step "procs";    install_pkg procs; }
@@ -290,7 +294,7 @@ app_zinit() {
 # and Linuxbrew; the installer only updates shell rc files, not this process.
 brew_shellenv() {
     local b
-    for b in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+    for b in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
         if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; return 0; fi
     done
     return 1
@@ -301,7 +305,7 @@ app_brew() {
     brew_shellenv || true                 # installed already, just off PATH?
     if ! pkg_exists brew; then
         NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
-        brew_shellenv
+        brew_shellenv || true
     fi
 }
 
@@ -346,7 +350,7 @@ app_starship() {
     fi
 }
 
-# coreutils provides gcp, needed by cp_or_ln / backup_path on macOS.
+# GNU coreutils (ls/grep/etc.) on macOS; not required by the installer itself.
 app_coreutils() {
     step "coreutils"
     [[ "$FAMILY" == "mac" ]] || return 0
@@ -383,28 +387,66 @@ app_pyenv() {
 # ORDER: app_pyenv must run before app_pyenv_version.
 app_pyenv_version() {
     step "pyenv version + neovim"
-    export PYENV_ROOT="$HOME/.pyenv"
-    export PATH="$PYENV_ROOT/bin:$PATH"
-    eval "$(pyenv init -)"
+    export PYENV_ROOT="${PYENV_ROOT:-$HOME/.pyenv}"
+    command -v pyenv >/dev/null 2>&1 || export PATH="$PYENV_ROOT/bin:$PATH"
+    if ! command -v pyenv >/dev/null 2>&1; then
+        echo "WARN: pyenv not found; skipping Python ${PYENV_VERSION} + pynvim"
+        return 0
+    fi
+    eval "$(pyenv init -)" 2>/dev/null || true
 
+    # Best-effort: never let an unavailable Python version abort the install.
     trap - ERR
-    pyenv install "$PYENV_VERSION" 2>/dev/null || true
-    pyenv virtualenv "$PYENV_VERSION" neovim3 2>/dev/null || true
+    pyenv versions --bare 2>/dev/null | grep -qx "$PYENV_VERSION" \
+        || pyenv install "$PYENV_VERSION" 2>/dev/null || true
+    pyenv virtualenvs --bare 2>/dev/null | grep -qx "neovim3" \
+        || pyenv virtualenv "$PYENV_VERSION" neovim3 2>/dev/null || true
     trap 'on_fail' ERR
 
-    pyenv global "$PYENV_VERSION"
-    "$PYENV_ROOT/versions/$PYENV_VERSION/envs/neovim3/bin/python3" -m pip install pynvim
+    if pyenv versions --bare 2>/dev/null | grep -qx "$PYENV_VERSION"; then
+        pyenv global "$PYENV_VERSION" 2>/dev/null || true
+    else
+        echo "WARN: Python ${PYENV_VERSION} unavailable; skipping pyenv global"
+    fi
+
+    local env_py="$PYENV_ROOT/versions/$PYENV_VERSION/envs/neovim3/bin/python3"
+    if [ -x "$env_py" ]; then
+        "$env_py" -m pip install pynvim || echo "WARN: could not install pynvim"
+    else
+        echo "WARN: neovim3 virtualenv missing; skipping pynvim"
+    fi
 }
 
+# Installs the nvm manager AND a default Node (npm). nvm is a shell function,
+# not a binary, so we key off ~/.nvm/nvm.sh instead of pkg_exists.
 app_nvm() {
-    step "nvm"
-    pkg_exists nvm && return
-    [ -d "$HOME/.nvm" ] && return
+    step "nvm + node"
+    export NVM_DIR="$HOME/.nvm"
     if [[ "$FAMILY" == "mac" ]]; then
-        brew install nvm
+        installed_by brew nvm || brew install nvm
+        # Homebrew keeps nvm.sh under its keg; expose it where .zshrc looks.
+        local pfx
+        pfx="$(brew --prefix nvm 2>/dev/null || true)"
+        if [ -n "$pfx" ] && [ -s "$pfx/nvm.sh" ]; then
+            mkdir -p "$NVM_DIR"
+            ln -sfn "$pfx/nvm.sh" "$NVM_DIR/nvm.sh"
+            [ -s "$pfx/libexec/nvm-exec" ] && ln -sfn "$pfx/libexec/nvm-exec" "$NVM_DIR/nvm-exec"
+        fi
     else
-        curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+        if [ ! -s "$NVM_DIR/nvm.sh" ]; then
+            curl -o- https://raw.githubusercontent.com/nvm-sh/nvm/v0.40.1/install.sh | bash
+        fi
     fi
+
+    # nvm internals can fail non-fatally (e.g. probing a missing `default`
+    # alias); disable the ERR trap around it like app_pyenv_version does.
+    trap - ERR
+    [ -s "$NVM_DIR/nvm.sh" ] && . "$NVM_DIR/nvm.sh" || true
+    if command -v nvm >/dev/null 2>&1 && ! command -v node >/dev/null 2>&1; then
+        nvm install --lts || true
+        nvm alias default 'lts/*' || true
+    fi
+    trap 'on_fail' ERR
 }
 
 app_nerd_fonts() {
@@ -641,31 +683,28 @@ app_kitty() {
 
 # ---------- Profiles (ordered app lists) ----------
 
-# ORDER matters within these lists (see inline comments).
-install_common() {
-    install_apps common \
+# Shared dependency set for every profile, including dotfiles-only. Ordered so
+# brew runs first (it provides git on a fresh mac), then everything the
+# dotfiles and the nvim config need. Called once per profile from main();
+# dotfile_setup() is config-only. `nvim_config` is absent because
+# dotfile_setup calls nvim_handroll() itself.
+install_deps() {
+    install_apps deps \
         base \
-        zinit \
         brew \
-        fzf \
+        zinit \
         coreutils \
+        fzf \
         nvim \
-        nvim_config \
         cargo \
+        luarocks \
         starship \
         zellij \
         pyenv \
         pyenv_version \
         nvm \
         nerd_fonts \
-        duf zoxide fd xh dog procs dust gping lsd tree_sitter
-}
-
-# Dotfiles-only dependencies: the same app objects as install_common, so the
-# standalone "dotfiles" profile installs exactly what the dotfiles need.
-dotfile_deps() {
-    install_apps dotfiles \
-        brew zinit coreutils nvim nvim_config cargo starship zellij fzf
+        duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 }
 
 install_desktop() {
@@ -700,6 +739,12 @@ dotfile_setup() {
         fi
     fi
 
+    # dotfile_setup owns the shared dependency set, so the dotfiles-only
+    # profile is self-contained and profile apps (which need brew/base) run
+    # after it.
+    step "dotfiles: dependencies"
+    install_deps
+
     step "dotfiles: backup existing config"
     backup_path "$HOME/.zprofile"
     backup_path "$HOME/.zshrc"
@@ -717,16 +762,13 @@ dotfile_setup() {
     mkdir -p "$HOME/.config"
     mkdir -p "$HOME/.local/share/zinit/snippets"
 
-    step "dotfiles: prerequisites"
-    dotfile_deps
-
     step "dotfiles: symlink config"
     nvim_handroll
-    cp_or_ln "$PROJECT_DIR/dotfiles/.config/kitty" "$HOME/.config"
+    link "$PROJECT_DIR/dotfiles/.config/kitty" "$HOME/.config/kitty"
     for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
-        cp_or_ln "$_f" "$HOME/.local/share/zinit/snippets/"
+        link "$_f" "$HOME/.local/share/zinit/snippets/"
     done
-    cp_or_ln "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
+    link "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
 
     if [[ "$PROFILE" == "server" ]]; then
         step "dotfiles: system config (fstab + crontab)"
@@ -737,25 +779,23 @@ dotfile_setup() {
 # ---------- Snap removal (ubuntu only) ----------
 remove_snap() {
     step "snap: remove"
-    snap --version
-    snap list
-    sudo systemctl disable snapd.service
-    sudo systemctl disable snapd.socket
-    sudo systemctl disable snapd.seeded.service
-    sudo snap remove firefox
-    sudo snap remove gtk-common-themes
-    sudo snap remove gnome-3-38-2004
-    sudo snap remove snapd-desktop-integration
-    sudo snap remove snap-store
-    sudo snap remove core20
-    sudo snap remove bare
-    sudo snap remove snapd
-    sudo systemctl stop snapd
-    sudo systemctl disable snapd
-    sudo systemctl mask snapd
-    sudo apt purge snapd -y
-    sudo apt-mark hold snapd
-    sudo apt autoremove --purge snapd
+    # Nothing to do if snap isn't present; never abort the run over it.
+    command -v snap >/dev/null 2>&1 || { echo "snap not installed; skipping"; return 0; }
+    snap --version || true
+    snap list || true
+    for svc in snapd.service snapd.socket snapd.seeded.service; do
+        sudo systemctl disable "$svc" 2>/dev/null || true
+    done
+    for pkg in firefox gtk-common-themes gnome-3-38-2004 snapd-desktop-integration \
+               snap-store core20 bare snapd; do
+        sudo snap remove "$pkg" 2>/dev/null || true
+    done
+    sudo systemctl stop snapd 2>/dev/null || true
+    sudo systemctl disable snapd 2>/dev/null || true
+    sudo systemctl mask snapd 2>/dev/null || true
+    sudo apt purge snapd -y || true
+    sudo apt-mark hold snapd || true
+    sudo apt autoremove --purge -y || true
     sudo rm -rf /snap /var/snap /var/lib/snapd /var/cache/snapd/ "$HOME/snap/"
 }
 
@@ -805,21 +845,18 @@ fi
 
 case "$PROFILE" in
     server)
-        install_common
-        install_server
         dotfile_setup
+        install_server
         [[ "$OS" == "ubuntu" ]] && remove_snap
         ;;
     desktop)
-        install_common
-        install_desktop
         dotfile_setup
+        install_desktop
         [[ "$OS" == "ubuntu" ]] && remove_snap
         ;;
     disney)
-        install_common
-        install_disney
         dotfile_setup
+        install_disney
         ;;
     dotfiles)
         dotfile_setup

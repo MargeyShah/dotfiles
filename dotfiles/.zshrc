@@ -12,7 +12,7 @@ source "$ZINIT_HOME/zinit.zsh"
 
 # ---------- Prompt: Starship ----------
 export STARSHIP_LOG=error
-eval "$(starship init zsh)"
+command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
 
 # ---------- Custom snippets (from dotfiles repo) ----------
 # Kept in ~/.local/share/zinit/snippets/ -> symlinked to ~/.scripts/dotfiles/zsh/
@@ -81,7 +81,7 @@ export LC_CTYPE="en_US.UTF-8"
 
 # ---------- Zoxide ----------
 # smart cd replacement (command is 'z')
-eval "$(zoxide init zsh)"
+command -v zoxide >/dev/null 2>&1 && eval "$(zoxide init zsh)"
 
 # ---------- Lazy pyenv ----------
 # https://github.com/pyenv/pyenv
@@ -114,10 +114,34 @@ precmd_functions+=(__fzf_init)
 # ---------- Lazy NVM (nvm owns node) ----------
 export NVM_DIR="$HOME/.nvm"
 
+# Expose nvm's node/npm to child processes (nvim, tree-sitter, etc.) without
+# sourcing nvm.sh on every shell. nvm/node/npm still lazy-load below for
+# switching versions. Picks the highest installed version.
+if ! command -v node >/dev/null 2>&1 && [ -d "$NVM_DIR/versions/node" ]; then
+    _nvm_bin="$(
+        for _d in "$NVM_DIR"/versions/node/v*(/N); do
+            [ -x "$_d/bin/node" ] && print -r -- "${${_d:t}#v} $_d"
+        done |
+        awk '{ split($1, a, "."); printf "%d %d %d %s\n", a[1], a[2], a[3], $2 }' |
+        sort -n -k1,1 -k2,2 -k3,3 |
+        tail -n1 |
+        awk '{ print $4 }'
+    )"
+    [ -n "$_nvm_bin" ] && export PATH="$_nvm_bin/bin:$PATH"
+    unset _nvm_bin _d
+fi
+
 load-nvm() {
     unset -f nvm node npm npx 2>/dev/null
     [[ -s "$NVM_DIR/nvm.sh" ]] && source "$NVM_DIR/nvm.sh"
     [[ -s "$NVM_DIR/bash_completion" ]] && source "$NVM_DIR/bash_completion"
+    # Homebrew keeps nvm.sh under its keg; use it if ~/.nvm/nvm.sh is absent.
+    if ! command -v nvm >/dev/null 2>&1 && command -v brew >/dev/null 2>&1; then
+        local _brew_nvm
+        _brew_nvm="$(brew --prefix nvm 2>/dev/null)/nvm.sh"
+        [[ -s "$_brew_nvm" ]] && source "$_brew_nvm"
+    fi
+    command -v nvm >/dev/null 2>&1 || return 0
     # Activate the default version so nvm's node precedes any other (e.g. homebrew)
     nvm use default --silent 2>/dev/null
     # Ensure nvm's active node bin is first in PATH (nvm doesn't always prepend here)

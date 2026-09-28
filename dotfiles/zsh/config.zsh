@@ -220,14 +220,14 @@ if is_server; then
         local subcommand="${@[-1]}"
         local -a compose_files
         compose_files=("${@[1,-2]}")
-        
+
         local -a new_words
         new_words=("docker" "compose")
         for file in "${compose_files[@]}"; do
             new_words+=("-f" "$file")
         done
         new_words+=("$subcommand" "${words[@]:1}")
-        
+
         local offset=$(( 2 + 2 * ${#compose_files[@]} ))
         words=("${new_words[@]}")
         (( CURRENT += offset ))

@@ -15,9 +15,6 @@ if is_env mac; then
 
     # Work (Mac)
     if is_work_mac; then
-        export AWS_DEFAULT_PROFILE=HULU_SSO
-        export DOOZER_HOME=/Users/margey.shah/Documents/test/doozer
-        export VAULT_ADDR="https://secrets.staging.hulu.com"
 
         sshi(){
             ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"

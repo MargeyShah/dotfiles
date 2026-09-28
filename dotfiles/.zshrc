@@ -135,4 +135,4 @@ for cmd in node npm npx; do
 done
 
 # ---------- opencode ----------
-export PATH=/home/margey/.opencode/bin:$PATH
+export PATH="$HOME/.opencode/bin:$PATH"

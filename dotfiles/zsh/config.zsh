@@ -204,7 +204,7 @@ if is_server; then
 
     # Debrid order of operations fix
     debridfix () {
-      cd /home/margey/docker
+      cd "$HOME/docker"
       sudo docker compose --profile debrid down
       sudo umount /disks/pistachio/plex/Media/remote/realdebrid
       sleep 5

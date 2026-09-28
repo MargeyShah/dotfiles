@@ -7,14 +7,38 @@ export PATH=$PATH:/usr/local/go/bin
 
 # NVM is lazy-loaded from .zshrc (load-nvm)
 
-# Brew Setup
-# https://brew.sh/
-if is_env mac; then # Mac
+# ---------- Mac ----------
+if is_env mac; then
+    # Brew Setup
+    # https://brew.sh/
     eval "$(/opt/homebrew/bin/brew shellenv)"
+
+    # Work (Mac)
+    if is_work_mac; then
+        export AWS_DEFAULT_PROFILE=HULU_SSO
+        export DOOZER_HOME=/Users/margey.shah/Documents/test/doozer
+        export VAULT_ADDR="https://secrets.staging.hulu.com"
+
+        sshi(){
+            ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"
+        }
+
+        PS2_BASTIONS=(
+            "bastion-1-ps2-prod.us-east-1.twdcgrid.net"
+            "bastion-2-ps2-prod.us-east-1.twdcgrid.net"
+            "bastion-1-ps2-nonprod.us-east-1.twdcgrid.net"
+            "bastion-2-ps2-nonprod.us-east-1.twdcgrid.net"
+        )
+
+        function ps2(){
+            ssh -A $(printf '%s\n' "${PS2_BASTIONS[@]}" | fzf)
+        }
+    fi
 fi
 
-if is_env linux || is_env wsl; then # Unix (non-NixOS) incl. WSL
-    # Not NIX OS, import brew
+# ---------- Linux / WSL ----------
+if is_linuxlike; then
+    # Import Linuxbrew (skip on NixOS)
     if ! ( [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null ); then
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
     fi
@@ -23,28 +47,6 @@ if is_env linux || is_env wsl; then # Unix (non-NixOS) incl. WSL
     if [ -d "$HOME/platform-tools" ] ; then
         export PATH="$HOME/platform-tools:$PATH"
     fi
-fi
-
-# ---------- Work (Mac) ----------
-if is_env mac && is_work_mac; then
-    export AWS_DEFAULT_PROFILE=HULU_SSO
-    export DOOZER_HOME=/Users/margey.shah/Documents/test/doozer
-    export VAULT_ADDR="https://secrets.staging.hulu.com"
-
-    sshi(){
-        ssh -i ${HOME}/.ssh/coreeng.pem ec2-user@"$1"
-    }
-
-    PS2_BASTIONS=(
-        "bastion-1-ps2-prod.us-east-1.twdcgrid.net"
-        "bastion-2-ps2-prod.us-east-1.twdcgrid.net"
-        "bastion-1-ps2-nonprod.us-east-1.twdcgrid.net"
-        "bastion-2-ps2-nonprod.us-east-1.twdcgrid.net"
-    )
-
-    function ps2(){
-        ssh -A $(printf '%s\n' "${PS2_BASTIONS[@]}" | fzf)
-    }
 fi
 
 # ---------- Zellij ----------

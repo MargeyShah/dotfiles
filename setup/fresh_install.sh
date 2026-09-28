@@ -286,10 +286,23 @@ app_zinit() {
     fi
 }
 
+# Put Homebrew on PATH for this script process. Apple Silicon mac (/opt/homebrew)
+# and Linuxbrew; the installer only updates shell rc files, not this process.
+brew_shellenv() {
+    local b
+    for b in /opt/homebrew/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+        if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; return 0; fi
+    done
+    return 1
+}
+
 app_brew() {
     step "homebrew"
-    pkg_exists brew && return
-    NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+    brew_shellenv || true                 # installed already, just off PATH?
+    if ! pkg_exists brew; then
+        NONINTERACTIVE=1 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/install.sh)"
+        brew_shellenv
+    fi
 }
 
 app_fzf() {
@@ -652,7 +665,7 @@ install_common() {
 # standalone "dotfiles" profile installs exactly what the dotfiles need.
 dotfile_deps() {
     install_apps dotfiles \
-        coreutils zinit brew starship zellij nvim_config fzf
+        brew zinit coreutils nvim nvim_config cargo starship zellij fzf
 }
 
 install_desktop() {

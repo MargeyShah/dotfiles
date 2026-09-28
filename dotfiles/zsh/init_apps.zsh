@@ -11,7 +11,7 @@ export PATH=$PATH:/usr/local/go/bin
 if is_env mac; then
     # Brew Setup
     # https://brew.sh/
-    eval "$(/opt/homebrew/bin/brew shellenv)"
+    [[ -x /opt/homebrew/bin/brew ]] && eval "$(/opt/homebrew/bin/brew shellenv)"
 
     # Work (Mac)
     if is_work_mac; then
@@ -39,7 +39,8 @@ fi
 # ---------- Linux / WSL ----------
 if is_linuxlike; then
     # Import Linuxbrew (skip on NixOS)
-    if ! ( [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null ); then
+    if [[ -x /home/linuxbrew/.linuxbrew/bin/brew ]] \
+        && ! ( [ -f /etc/NIXOS ] || grep -qi '^ID=nixos' /etc/os-release 2>/dev/null ); then
         eval "$(/home/linuxbrew/.linuxbrew/bin/brew shellenv)"
     fi
 

@@ -1,6 +1,5 @@
 # If you come from bash you might have to change your $PATH.
 # export PATH=$HOME/bin:/usr/local/bin:$PATH
-# nvim is installed via Homebrew (see init_apps.zsh brew shellenv).
 
 # ---------- Zinit (Plugin Manager) ----------
 export ZINIT_HOME="$HOME/.local/share/zinit/zinit.git"
@@ -24,7 +23,7 @@ zinit snippet "$HOME/.local/share/zinit/snippets/config.zsh"
 # ---------- Completion ----------
 autoload -Uz compinit
 mkdir -p "${XDG_CACHE_HOME:-$HOME/.cache}"
-local compflags="-d ${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
+compflags="-d ${XDG_CACHE_HOME:-$HOME/.cache}/zcompdump"
 # Skip insecure-dir check when running as root (e.g. sudo -E zsh)
 [[ $EUID -eq 0 ]] && compflags="-u $compflags"
 compinit ${=compflags}

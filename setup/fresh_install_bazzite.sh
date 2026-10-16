@@ -43,6 +43,7 @@ CONTAINER_PROVISION="${SCRIPT_DIR}/bazzite/container_provision.sh"
 DESKTOP_FLATPAKS=(
     im.riot.Riot                     # Element
     com.visualstudio.code            # Visual Studio Code
+    org.signal.Signal                # Signal Desktop
     dev.vencord.Vesktop              # Vesktop (Discord)
     com.plexamp.Plexamp              # Plexamp
     sh.ppy.osu                       # osu! (lazer)

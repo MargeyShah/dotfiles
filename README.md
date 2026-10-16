@@ -27,9 +27,9 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    ~/.scripts/setup/fresh_install_bazzite.sh
    ```
 
-   This installs host GUI apps as **flatpaks** (Element, VS Code, Vesktop,
-   Plexamp, osu!, Ludusavi, Heroic, Gear Lever), installs **Helium** and
-   **Sidra** as AppImages (via Gear Lever — no Flathub package exists),
+   This installs host GUI apps as **flatpaks** (Element, VS Code, Signal,
+   Vesktop, Plexamp, osu!, Ludusavi, Heroic, Gear Lever), installs **Helium**
+   and **Sidra** as AppImages (via Gear Lever — no Flathub package exists),
    creates an **Ubuntu Distrobox** container holding the apt CLI toolchain
    (rust, nvm, pyenv, starship, fzf, nvim, opencode, …), makes that container
    the default terminal, and symlinks the dotfiles. `podman-docker` (baked into

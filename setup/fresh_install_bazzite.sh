@@ -77,6 +77,12 @@ DECKY_PLUGINS=(
     "PlayCount"
     "IsThereAnyDeal for Deck"
     "Decky LSFG-VK"
+    "AutoFlatpaks"
+    "Decky Terminal"
+    "Audio Loader"
+    "Game Theme Music"
+    "Quick Launch"
+    "Volume Mixer"
 )
 DECKY_STORE_URL="https://plugins.deckbrew.xyz/plugins"
 DECKY_ARTIFACT_URL="https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions"
@@ -185,7 +191,8 @@ install_appimages() {
 # gaming host. (Use --no-gaming to skip.)
 #   - EmuDeck  : `ujust get-emudeck install` (installs an AppImage + wizard)
 #   - Decky    : `ujust setup-decky install` (Decky Loader; used in Game Mode)
-# Both are interactive-capable but support a non-interactive action argument.
+#   - Bazzite Buddy : `ujust get-decky-bazzite-buddy install` (changelog plugin)
+# All are interactive-capable but expose a non-interactive action argument.
 install_gaming_extras() {
     step "bazzite: gaming extras (emudeck, decky)"
     command -v ujust >/dev/null 2>&1 || { echo "WARN: ujust not found; skipping EmuDeck/Decky"; return 0; }
@@ -202,6 +209,14 @@ install_gaming_extras() {
         echo "Decky Loader already installed."
     else
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
+    fi
+
+    # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
+    # so installed via its own ujust recipe into ~/homebrew/plugins/Bazzite Buddy).
+    if ujust get-decky-bazzite-buddy status 2>/dev/null | grep -qx install; then
+        echo "Bazzite Buddy already installed."
+    else
+        ujust get-decky-bazzite-buddy install || echo "WARN: Bazzite Buddy install failed (run 'ujust get-decky-bazzite-buddy' manually)"
     fi
 }
 

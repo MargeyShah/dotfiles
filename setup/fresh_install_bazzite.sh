@@ -50,6 +50,11 @@ DESKTOP_FLATPAKS=(
     com.github.mtkennerly.ludusavi   # Ludusavi (save backups)
     com.heroicgameslauncher.hgl      # Heroic Games Launcher
     it.mijorus.gearlever             # Gear Lever (AppImage manager)
+    org.prismlauncher.PrismLauncher  # Prism Launcher (Minecraft)
+    info.cemu.Cemu                   # Cemu (Wii U)
+    net.rpcs3.RPCS3                  # RPCS3 (PS3)
+    org.DolphinEmu.dolphin-emu       # Dolphin (GameCube/Wii)
+    dev.goats.xivlauncher            # XIVLauncher (FFXIV)
 )
 
 # Apps with no Flathub package, installed as AppImages and integrated via Gear

@@ -47,3 +47,11 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
 
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
 used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.
+
+## SSH & commit signing
+
+Every install (both scripts) runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
+if absent, copies it to **pistachio** (`margey@192.168.0.2`), registers it on
+GitHub via `gh` (best-effort), and configures git to **sign commits with SSH**
+(`gpg.format=ssh`, `commit.gpgsign=true`) so they show as *Verified*. The
+managed `~/.ssh/config` (`dotfiles/ssh/config`) defines the `pistachio` host.

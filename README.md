@@ -37,5 +37,9 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    the image) provides the `docker` CLI against Podman; there is no Docker
    daemon.
 
+   Opt-in gaming extras (prompted, or force with `--gaming` / skip with
+   `--no-gaming`) are installed via Bazzite's own targets:
+   `ujust get-emudeck install` and `ujust setup-decky install`.
+
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
 used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.

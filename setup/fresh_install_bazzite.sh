@@ -164,6 +164,30 @@ install_appimages() {
     done
 }
 
+# Gaming extras installed via Bazzite's own `ujust` targets (not flatpaks, not
+# baked into the image). Opt-in because they are gaming/Game-Mode specific:
+#   - EmuDeck  : `ujust get-emudeck install` (installs an AppImage + wizard)
+#   - Decky    : `ujust setup-decky install` (only useful in Steam Game Mode)
+# Both are interactive-capable but support a non-interactive action argument.
+install_gaming_extras() {
+    step "bazzite: gaming extras (emudeck, decky)"
+    command -v ujust >/dev/null 2>&1 || { echo "WARN: ujust not found; skipping EmuDeck/Decky"; return 0; }
+
+    # EmuDeck (status prints 'install' or 'uninstall').
+    if ujust get-emudeck status 2>/dev/null | grep -qx install; then
+        echo "EmuDeck already installed."
+    else
+        ujust get-emudeck install || echo "WARN: EmuDeck install failed (run 'ujust get-emudeck' manually)"
+    fi
+
+    # Decky Loader (status prints 'install'/'install-prerelease'/'uninstall').
+    if ujust setup-decky status 2>/dev/null | grep -q install; then
+        echo "Decky Loader already installed."
+    else
+        ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
+    fi
+}
+
 # Verify the podman-docker shim (baked into the custom image) so `docker` works.
 install_podman_docker() {
     step "bazzite: podman-docker"
@@ -227,18 +251,35 @@ set_default_terminal() {
 
 # ---------- Flow ----------
 
+# Optional gaming extras (EmuDeck + Decky) via ujust. Non-interactive override:
+#   ./fresh_install_bazzite.sh --gaming      (install them)
+#   ./fresh_install_bazzite.sh --no-gaming   (skip them)
+GAMING_EXTRAS="ask"
+case "${1:-}" in
+    --gaming)    GAMING_EXTRAS="yes" ;;
+    --no-gaming) GAMING_EXTRAS="no"  ;;
+esac
+
 echo "Bazzite bootstrap"
 echo "  container: ${CONTAINER_NAME}"
 echo "  flatpaks:  ${DESKTOP_FLATPAKS[*]}"
+echo "  appimages: ${APPIMAGE_APPS[*]}"
 read -rp "Do you want to continue? (y/n): " confirm
 if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     echo "Script aborted."
     exit 1
 fi
 
+# Gaming extras are gaming/Game-Mode specific, so ask unless overridden by flag.
+if [[ "$GAMING_EXTRAS" == "ask" ]]; then
+    read -rp "Install gaming extras (EmuDeck + Decky Loader)? (y/n): " g
+    if [[ "$g" == "y" || "$g" == "Y" ]]; then GAMING_EXTRAS="yes"; else GAMING_EXTRAS="no"; fi
+fi
+
 install_flatpaks
 install_appimages
 install_podman_docker
+[[ "$GAMING_EXTRAS" == "yes" ]] && install_gaming_extras
 create_container
 provision_container
 set_default_terminal

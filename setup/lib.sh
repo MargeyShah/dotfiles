@@ -427,6 +427,9 @@ app_pyenv_version() {
 app_nvm() {
     step "nvm + node"
     export NVM_DIR="$HOME/.nvm"
+    # nvm's installer aborts when $NVM_DIR is set but absent and doesn't match
+    # its computed default (e.g. when XDG_CONFIG_HOME differs); pre-create it.
+    mkdir -p "$NVM_DIR"
     if [[ "$FAMILY" == "mac" ]]; then
         installed_by brew nvm || brew install nvm
         # Homebrew keeps nvm.sh under its keg; expose it where .zshrc looks.
@@ -663,7 +666,9 @@ app_cron() {
     sync_system_config
 }
 
-# SSH identity + git commit signing + key push to pistachio.
+# SSH identity + git commit signing. Key generation and git signing run
+# everywhere; the key push to pistachio + GitHub runs only on our own listed
+# hosts (see dotfiles/zsh/env.zsh), and gh is never auto-authenticated.
 # OS-agnostic (runs on the host for apt/brew and inside the Bazzite Distrobox,
 # which shares $HOME), so the key and git config apply everywhere at once.
 PISTACHIO_HOST="pistachio"
@@ -690,21 +695,41 @@ app_ssh() {
     chmod 600 "$key" 2>/dev/null || true
     chmod 644 "$key.pub" 2>/dev/null || true
 
-    # 2. Trust the host + copy the key to pistachio (best-effort; may prompt).
-    trap - ERR
-    grep -qF "$PISTACHIO_IP" "$HOME/.ssh/known_hosts" 2>/dev/null \
-        || ssh-keyscan -H "$PISTACHIO_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
-            "${PISTACHIO_USER}@${PISTACHIO_IP}" true >/dev/null 2>&1; then
-        echo "Copying SSH key to ${PISTACHIO_HOST} (${PISTACHIO_USER}@${PISTACHIO_IP}); may prompt for a password..."
-        ssh-copy-id -i "$key.pub" "${PISTACHIO_USER}@${PISTACHIO_IP}" \
-            || echo "WARN: could not copy key to ${PISTACHIO_HOST}"
+    # 2. Trust the host + copy the key to pistachio, and 3. register the key on
+    # GitHub — only on our own (listed) machines, so a random host never pushes
+    # its key anywhere. The hostname lists live in dotfiles/zsh/env.zsh (single
+    # source of truth); unknown hosts are skipped. gh is never auto-authed.
+    local h="${HOST:-$(hostname)}" known_host="no"
+    # shellcheck source=../dotfiles/zsh/env.zsh
+    if [ -f "$PROJECT_DIR/dotfiles/zsh/env.zsh" ]; then
+        source "$PROJECT_DIR/dotfiles/zsh/env.zsh"
+        shopt -s nocasematch
+        local list
+        for list in "${HOSTS_WSL[@]}" "${HOSTS_LINUX[@]}" "${HOSTS_MAC[@]}"; do
+            if [[ "$list" == "$h" ]]; then known_host="yes"; break; fi
+        done
+        shopt -u nocasematch
     fi
 
-    # 3. Register the public key on GitHub (best-effort; needs 'gh auth login').
-    if pkg_exists gh; then
-        gh ssh-key add "$key.pub" --title "margey@$(hostname) (ed25519)" 2>/dev/null \
-            || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
+    trap - ERR
+    if [ "$known_host" = "yes" ]; then
+        # 2. Trust the host + copy the key to pistachio (best-effort; may prompt).
+        grep -qF "$PISTACHIO_IP" "$HOME/.ssh/known_hosts" 2>/dev/null \
+            || ssh-keyscan -H "$PISTACHIO_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+        if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
+                "${PISTACHIO_USER}@${PISTACHIO_IP}" true >/dev/null 2>&1; then
+            echo "Copying SSH key to ${PISTACHIO_HOST} (${PISTACHIO_USER}@${PISTACHIO_IP}); may prompt for a password..."
+            ssh-copy-id -i "$key.pub" "${PISTACHIO_USER}@${PISTACHIO_IP}" \
+                || echo "WARN: could not copy key to ${PISTACHIO_HOST}"
+        fi
+
+        # 3. Register the public key on GitHub (best-effort; never auto-auths).
+        if pkg_exists gh; then
+            gh ssh-key add "$key.pub" --title "margey@$(hostname) (ed25519)" 2>/dev/null \
+                || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
+        fi
+    else
+        echo "Skipping pistachio key copy + GitHub key push (host ${h} is not in env.zsh host lists)"
     fi
     trap 'on_fail' ERR
 

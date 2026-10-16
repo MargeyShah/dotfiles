@@ -2,14 +2,18 @@
 
 Various scripts to automate tasks, simplify repetitive configuration, etc.
 
-Please make sure to clone this project directly into the HOME directory of the current user.
+Please make sure to clone this project as `~/.scripts` — the setup scripts
+resolve their own files from `$HOME/.scripts`:
 
 ```
-mv dotfiles .dotfiles
-cd .dotfiles/setup
-./fresh_install.sh # option 1 for servers, 2 for linux/mac devices, 3 is fully personal, ignore, 4 for dotfile setup alone (will run into issues if you've never ran 2 on your device
-
+git clone https://github.com/MargeyShah/dotfiles.git ~/.scripts
+cd ~/.scripts/setup
+./fresh_install.sh   # 1 server, 2 Unix PC (Linux desktop), 3 disney (Mac work), 4 dotfiles only
 ```
+
+(Option 4 installs/symlinks the dotfiles alone and assumes the profile from
+option 2 has already provisioned the toolchain — it will run into issues on a
+machine where that was never done.)
 
 `nvimup` will update nvim configs from the https://github.com/joermo/dotfiles remote
 
@@ -28,8 +32,9 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    ```
 
    This installs host GUI apps as **flatpaks** (Element, VS Code, Signal,
-   Vesktop, Plexamp, osu!, Ludusavi, Heroic, Gear Lever, Prism Launcher, Cemu,
-   RPCS3, Dolphin, XIVLauncher), installs **Helium** and **Sidra** as AppImages
+   Vesktop, Plexamp, Hidamari, osu!, Ludusavi, Heroic, Gear Lever, Prism
+   Launcher, Cemu, RPCS3, Dolphin, XIVLauncher), installs **Helium** and
+   **Sidra** as AppImages
    (via Gear Lever — no Flathub package exists),
    creates an **Ubuntu Distrobox** container holding the apt CLI toolchain
    (rust, nvm, pyenv, starship, fzf, nvim, opencode, …), makes that container
@@ -53,13 +58,27 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    LM Studio + VSCodium (Homebrew casks from `ublue-os/tap`), and Android
    Platform Tools (adb/fastboot, inside the Distrobox).
 
+   Element gets a user flatpak override for keyring support on GNOME:
+   `flatpak override --user --talk-name=org.freedesktop.secrets im.riot.Riot`.
+
+   **Hanabi** (the GNOME Shell live-wallpaper extension used with Hidamari) is
+   not on Flathub or extensions.gnome.org, so it is not installed automatically.
+   To add it manually, clone [jeffshee/gnome-ext-hanabi](https://github.com/jeffshee/gnome-ext-hanabi)
+   (use the `javascript` branch for GNOME 45–50, `main` for GNOME 50+), then run
+   `make install` and enable it in the Extensions app.
+
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
 used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.
 
 ## SSH & commit signing
 
 Every install (both scripts) runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
-if absent, copies it to **pistachio** (`margey@192.168.0.2`), registers it on
-GitHub via `gh` (best-effort), and configures git to **sign commits with SSH**
-(`gpg.format=ssh`, `commit.gpgsign=true`) so they show as *Verified*. The
-managed `~/.ssh/config` (`dotfiles/ssh/config`) defines the `pistachio` host.
+if absent and configures git to **sign commits with SSH** (`gpg.format=ssh`,
+`commit.gpgsign=true`) so they show as *Verified*.
+
+Copying that key to **pistachio** (`margey@192.168.0.2`) and registering it on
+GitHub via `gh` (best-effort) are **only done on our own machines** — the
+hostnames listed in `dotfiles/zsh/env.zsh` (`HOSTS_WSL`/`HOSTS_LINUX`/`HOSTS_MAC`,
+including `Element-Bazzite`). `gh` is never auto-authenticated; if `gh` is not
+already logged in, the key push is skipped with a note. The managed
+`~/.ssh/config` (`dotfiles/ssh/config`) defines the `pistachio` host.

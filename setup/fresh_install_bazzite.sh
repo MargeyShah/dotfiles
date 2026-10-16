@@ -49,6 +49,7 @@ DESKTOP_FLATPAKS=(
     org.signal.Signal                # Signal Desktop
     dev.vencord.Vesktop              # Vesktop (Discord)
     com.plexamp.Plexamp              # Plexamp
+    io.github.jeffshee.Hidamari      # Hidamari (video wallpaper)
     sh.ppy.osu                       # osu! (lazer)
     com.github.mtkennerly.ludusavi   # Ludusavi (save backups)
     com.heroicgameslauncher.hgl      # Heroic Games Launcher
@@ -144,6 +145,14 @@ install_flatpaks() {
             flatpak install -y --noninteractive flathub "$app"
         fi
     done
+
+    # Element needs to reach the Secret Service (keyring) for its secret storage.
+    if flatpak info im.riot.Riot >/dev/null 2>&1; then
+        flatpak override --user \
+            --talk-name=org.freedesktop.secrets \
+            im.riot.Riot \
+            || echo "WARN: could not apply Element keyring override"
+    fi
 }
 
 # Resolve the download URL of the newest release asset matching a regex.
@@ -182,8 +191,10 @@ install_appimages() {
         fi
 
         # Integrate into the app menu + update checks with Gear Lever.
+        # --yes avoids Gear Lever's interactive "integrate? (y/N)" prompt, which
+        # otherwise blocks (and appears to hang) the script.
         if flatpak info it.mijorus.gearlever >/dev/null 2>&1; then
-            flatpak run it.mijorus.gearlever --integrate "$dest" 2>/dev/null \
+            flatpak run it.mijorus.gearlever --integrate --yes "$dest" 2>/dev/null \
                 || echo "WARN: Gear Lever could not integrate $name (open Gear Lever manually)"
         else
             echo "WARN: Gear Lever not installed; $name left unintegrated in $HOME/Applications"
@@ -210,7 +221,8 @@ install_gaming_extras() {
     fi
 
     # Decky Loader (status prints 'install'/'install-prerelease'/'uninstall').
-    if ujust setup-decky status 2>/dev/null | grep -q install; then
+    # Exact-match so the 'uninstall' status is not mistaken for installed.
+    if ujust setup-decky status 2>/dev/null | grep -qxE 'install(-prerelease)?'; then
         echo "Decky Loader already installed."
     else
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
@@ -218,7 +230,10 @@ install_gaming_extras() {
 
     # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
     # so installed via its own ujust recipe into ~/homebrew/plugins/Bazzite Buddy).
-    if ujust get-decky-bazzite-buddy status 2>/dev/null | grep -qx install; then
+    # It requires Decky Loader, so only install it once Decky is really present.
+    if ! ujust setup-decky status 2>/dev/null | grep -qxE 'install(-prerelease)?'; then
+        echo "WARN: Decky Loader not installed; skipping Bazzite Buddy"
+    elif ujust get-decky-bazzite-buddy status 2>/dev/null | grep -qx install; then
         echo "Bazzite Buddy already installed."
     else
         ujust get-decky-bazzite-buddy install || echo "WARN: Bazzite Buddy install failed (run 'ujust get-decky-bazzite-buddy' manually)"
@@ -366,16 +381,30 @@ provision_container() {
 }
 
 # Make the container the default terminal by auto-entering it from an
-# interactive host shell. Marker-guarded so re-runs don't duplicate it.
+# interactive host shell, while always leaving a way back to the plain host
+# shell:
+#   * `db-off` / `db-on` toggle auto-entry (sentinel file ~/.no-distrobox).
+#     $HOME is shared with the container, so you can toggle from inside it too,
+#     then open a new terminal for a host shell.
+#   * `NO_DISTROBOX=1 <cmd>` skips auto-entry for a single shell/command.
+#   * if `distrobox enter` fails, drop to the host shell instead of the terminal
+#     just closing.
+# Marker-guarded: re-runs replace the previous block in place, so an older
+# snippet already in ~/.bashrc gets upgraded rather than left stale.
 set_default_terminal() {
     step "bazzite: default terminal"
     local rc="$HOME/.bashrc"
     local begin="# >>> bazzite distrobox terminal >>>"
     local end="# <<< bazzite distrobox terminal <<<"
 
+    # Upgrade path: strip any previous version of the block (markers included)
+    # before appending the current one.
     if [ -f "$rc" ] && grep -qF "$begin" "$rc"; then
-        echo "default-terminal snippet already present in $rc"
-        return 0
+        awk -v b="$begin" -v e="$end" '
+            $0 == b { skip = 1; next }
+            $0 == e { skip = 0; next }
+            !skip   { print }
+        ' "$rc" > "${rc}.tmp" && mv "${rc}.tmp" "$rc"
     fi
 
     {
@@ -383,12 +412,22 @@ set_default_terminal() {
         echo "$begin"
         echo "# Auto-enter the Ubuntu toolchain container for interactive shells."
         echo "# CONTAINER_ID is set once inside a distrobox, so this cannot recurse."
-        echo "if [ -n \"\$PS1\" ] && [ -z \"\$CONTAINER_ID\" ] && command -v distrobox >/dev/null 2>&1; then"
-        echo "    exec distrobox enter ${CONTAINER_NAME} -- zsh -l"
+        echo "# Host-shell escape hatch: run 'db-off' (or NO_DISTROBOX=1 bash)."
+        echo "if [ -n \"\$PS1\" ] && [ -z \"\$CONTAINER_ID\" ] \\"
+        echo "   && [ -z \"\$NO_DISTROBOX\" ] && [ ! -e \"\$HOME/.no-distrobox\" ] \\"
+        echo "   && command -v distrobox >/dev/null 2>&1; then"
+        echo "    if distrobox enter ${CONTAINER_NAME} -- zsh -l; then"
+        echo "        exit  # container exited -> close this terminal too"
+        echo "    fi"
+        echo "    echo \"WARN: 'distrobox enter ${CONTAINER_NAME}' failed; dropping to the host shell.\" >&2"
         echo "fi"
+        echo "# db-off/db-on: toggle auto-entry for future terminals. \$HOME is shared"
+        echo "# with the container, so these work from inside it as well."
+        echo "db-off() { touch \"\$HOME/.no-distrobox\"; echo 'Distrobox auto-entry OFF (open a new terminal for a host shell)'; }"
+        echo "db-on()  { rm -f \"\$HOME/.no-distrobox\";  echo 'Distrobox auto-entry ON (open a new terminal)'; }"
         echo "$end"
     } >> "$rc"
-    echo "Added default-terminal snippet to $rc (takes effect in new shells)."
+    echo "Updated default-terminal snippet in $rc (takes effect in new shells)."
 }
 
 # ---------- Flow ----------

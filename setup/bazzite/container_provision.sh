@@ -90,4 +90,11 @@ install_apps bazzite_deps \
     android_tools \
     duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 
+# Make zsh the default shell inside the container (app_base installed it), so
+# `distrobox enter` lands in zsh even without the explicit `-- zsh -l`.
+if command -v zsh >/dev/null 2>&1; then
+    sudo chsh -s "$(command -v zsh)" "$(id -un)" 2>/dev/null \
+        || echo "WARN: could not set zsh as the default shell in the container"
+fi
+
 echo "Container provisioning complete."

@@ -4,7 +4,7 @@
 
 # OS-class lists (exactly one matches per host).
 export HOSTS_WSL=( "Element-Windows" )
-export HOSTS_LINUX=( "Pistachio" "octopi" "Macadamia" )
+export HOSTS_LINUX=( "Pistachio" "octopi" "Macadamia" "Element-Bazzite" )
 export HOSTS_MAC=( "FR95FPVKK6" "Pine" )
 
 # Role lists — subsets of the OS-class lists above (a host in a role list

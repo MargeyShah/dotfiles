@@ -43,7 +43,15 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    (`ujust get-decky-bazzite-buddy install`), and these **Decky plugins** from
    the Decky store: CSS Loader, SteamGridDB, ProtonDB Badges, HLTB for Deck,
    TabMaster, PlayCount, IsThereAnyDeal for Deck, Decky LSFG-VK, AutoFlatpaks,
-   Decky Terminal, Audio Loader, Game Theme Music, Quick Launch, and Volume Mixer.
+   Decky Terminal, Audio Loader, Game Theme Music, Quick Launch, Volume Mixer,
+   EmuDecky, and MusicControl.
+
+   **System extras** are also installed automatically (skip with `--no-extras`):
+   Proton Plus, Sunshine, Wake-on-LAN (`ujust wol enable`), Boot-to-Windows from
+   Steam, Virtualization (`ujust setup-virtualization virt-on`), input group
+   (`ujust add-user-to-input-group add`), CoolerControl (layers rpm; reboot),
+   LM Studio + VSCodium (Homebrew casks from `ublue-os/tap`), and Android
+   Platform Tools (adb/fastboot, inside the Distrobox).
 
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
 used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.

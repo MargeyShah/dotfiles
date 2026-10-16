@@ -17,10 +17,13 @@
 #
 #   1. verifies it is running on Bazzite (and warns if not on the custom image),
 #   2. installs the host GUI apps as flatpaks (idempotent; mirrors the image),
-#   3. creates the Ubuntu Distrobox container,
-#   4. provisions the container with the CLI toolchain (container_provision.sh),
-#   5. makes the container the default terminal,
-#   6. symlinks the dotfiles on the host (dotfile_config from lib.sh).
+#   2b. installs the AppImage apps (Helium/Sidra) via Gear Lever,
+#   3. installs gaming extras (EmuDeck, Decky + plugins) and system extras
+#      (Proton Plus, Sunshine, Wake-on-LAN, Virtualization, CoolerControl, etc.),
+#   4. creates the Ubuntu Distrobox container,
+#   5. provisions the container with the CLI toolchain (container_provision.sh),
+#   6. makes the container the default terminal,
+#   7. symlinks the dotfiles on the host (dotfile_config from lib.sh).
 #
 # App objects and helpers are shared with fresh_install.sh via setup/lib.sh.
 
@@ -288,6 +291,45 @@ print(next((p["versions"][0]["hash"] for p in d if p.get("name")==sys.argv[2]),"
     done
 }
 
+# System extras: hardware/gaming-adjacent tools Bazzite supports, applied via
+# Bazzite's own ujust targets plus a couple of Homebrew casks. Always-on
+# (skip with --no-extras). Note: CoolerControl is the one rpm-ostree layer.
+install_system_extras() {
+    step "bazzite: system extras"
+
+    if command -v ujust >/dev/null 2>&1; then
+        # Proton Plus (flatpak) — Proton/Wine version manager.
+        ujust get-protonplus || echo "WARN: Proton Plus failed (run 'ujust get-protonplus')"
+        # Sunshine game-streaming host (flatpak).
+        ujust setup-sunshine enable-flatpak || echo "WARN: Sunshine failed (run 'ujust setup-sunshine')"
+        # Wake-on-LAN (udev/systemd config; persists across reboots).
+        ujust wol enable || echo "WARN: Wake-on-LAN failed (run 'ujust wol enable')"
+        # Boot straight to Windows from a Steam launcher entry (dual-boot).
+        ujust setup-boot-windows-steam || echo "WARN: boot-to-Windows failed (run 'ujust setup-boot-windows-steam')"
+        # Virtualization (virt-manager flatpak + kargs + libvirtd); reboot needed.
+        ujust setup-virtualization virt-on || echo "WARN: virtualization failed (run 'ujust setup-virtualization')"
+        # Add the user to the 'input' group for controller drivers.
+        ujust add-user-to-input-group add || echo "WARN: input group failed (run 'ujust add-user-to-input-group add')"
+        # CoolerControl fan/pump curves — LAYERS rpm packages (liquidctl,
+        # coolercontrol) and needs a reboot. The deliberate extra rpm exception.
+        ujust install-coolercontrol install || echo "WARN: CoolerControl failed (run 'ujust install-coolercontrol')"
+    else
+        echo "WARN: ujust not found; skipping ujust-based system extras"
+    fi
+
+    # LM Studio + VSCodium: Bazzite ships them via Homebrew casks in ublue-os/tap.
+    if brew_shellenv; then
+        brew trust ublue-os/tap 2>/dev/null || true
+        brew tap ublue-os/tap 2>/dev/null || true
+        pkg_exists lm-studio || brew install --cask lm-studio-linux \
+            || echo "WARN: LM Studio failed (run 'brew install --cask lm-studio-linux')"
+        pkg_exists codium || brew install --cask vscodium-linux \
+            || echo "WARN: VSCodium failed (run 'brew install --cask vscodium-linux')"
+    else
+        echo "WARN: Homebrew not found; skipping LM Studio + VSCodium"
+    fi
+}
+
 # Verify the podman-docker shim (baked into the custom image) so `docker` works.
 install_podman_docker() {
     step "bazzite: podman-docker"
@@ -351,10 +393,16 @@ set_default_terminal() {
 
 # ---------- Flow ----------
 
-# Gaming extras (EmuDeck + Decky + Decky plugins) are always installed: every
-# Bazzite host this targets is a gaming host. Escape hatch: --no-gaming.
+# Gaming + system extras are always installed: every Bazzite host this targets
+# is a gaming host. Escape hatches: --no-gaming, --no-extras.
 GAMING_EXTRAS="yes"
-[[ "${1:-}" == "--no-gaming" ]] && GAMING_EXTRAS="no"
+SYSTEM_EXTRAS="yes"
+for arg in "$@"; do
+    case "$arg" in
+        --no-gaming) GAMING_EXTRAS="no" ;;
+        --no-extras) SYSTEM_EXTRAS="no" ;;
+    esac
+done
 
 echo "Bazzite bootstrap"
 echo "  container: ${CONTAINER_NAME}"
@@ -374,6 +422,7 @@ if [[ "$GAMING_EXTRAS" == "yes" ]]; then
     install_gaming_extras
     install_decky_plugins
 fi
+[[ "$SYSTEM_EXTRAS" == "yes" ]] && install_system_extras
 create_container
 provision_container
 set_default_terminal

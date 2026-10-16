@@ -51,6 +51,14 @@ app_just() {
     sudo apt install -y just 2>/dev/null || cargo install just
 }
 
+# Android Platform Tools (adb/fastboot). No Flathub package exists, so it's
+# installed in the container; /dev is shared with the host for device access.
+app_android_tools() {
+    step "android-platform-tools"
+    pkg_exists adb && return
+    sudo apt install -y android-tools-adb android-tools-fastboot
+}
+
 # OpenCode CLI — installed here (in the Ubuntu Distrobox) rather than on the
 # Bazzite host, matching the ~/.opencode/bin PATH in dotfiles/.zshrc. Uses the
 # official installer.
@@ -79,6 +87,7 @@ install_apps bazzite_deps \
     kubectl \
     just \
     ssh \
+    android_tools \
     duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 
 echo "Container provisioning complete."

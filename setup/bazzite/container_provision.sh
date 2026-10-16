@@ -43,6 +43,15 @@ app_nvim() {
 # slips into a shared list.
 app_brew() { step "homebrew (skipped in container)"; return 0; }
 
+# OpenCode CLI — installed here (in the Ubuntu Distrobox) rather than on the
+# Bazzite host, matching the ~/.opencode/bin PATH in dotfiles/.zshrc. Uses the
+# official installer.
+app_opencode() {
+    step "opencode"
+    pkg_exists opencode && return
+    curl -fsSL https://opencode.ai/install | bash
+}
+
 # ---- Install ----------------------------------------------------------------
 install_apps bazzite_deps \
     base \
@@ -57,6 +66,7 @@ install_apps bazzite_deps \
     pyenv_version \
     nvm \
     nerd_fonts \
+    opencode \
     duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 
 echo "Container provisioning complete."

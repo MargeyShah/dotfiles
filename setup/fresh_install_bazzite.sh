@@ -39,9 +39,24 @@ CONTAINER_PROVISION="${SCRIPT_DIR}/bazzite/container_provision.sh"
 
 # Flathub IDs mirroring the desktop GUI apps from the apt profiles. GUI apps are
 # flatpaks on Bazzite, so these replace the element/vscode apt repo installs.
+# Keep this list in sync with default-flatpaks in the MargeyShah/bazzite recipes.
 DESKTOP_FLATPAKS=(
-    im.riot.Riot          # Element
-    com.visualstudio.code # Visual Studio Code
+    im.riot.Riot                     # Element
+    com.visualstudio.code            # Visual Studio Code
+    dev.vencord.Vesktop              # Vesktop (Discord)
+    com.plexamp.Plexamp              # Plexamp
+    sh.ppy.osu                       # osu! (lazer)
+    com.github.mtkennerly.ludusavi   # Ludusavi (save backups)
+    com.heroicgameslauncher.hgl      # Heroic Games Launcher
+    it.mijorus.gearlever             # Gear Lever (AppImage manager)
+)
+
+# Apps with no Flathub package, installed as AppImages and integrated via Gear
+# Lever. Format: "owner/repo|display-name|asset-filename-regex".
+# (Playnite is intentionally absent: there is no Linux build.)
+APPIMAGE_APPS=(
+    "imputnet/helium-linux|Helium|helium-.*-x86_64\.AppImage$"
+    "wimpysworld/sidra|Sidra|Sidra-linux-x86_64\.AppImage$"
 )
 
 # ---------- Guards ----------
@@ -65,7 +80,7 @@ fi
 # Warn (do not fail) if the host is not on the custom image — flatpaks still
 # install, but podman-docker and the signing policy come from that image.
 if command -v rpm-ostree >/dev/null 2>&1; then
-    if ! rpm-ostree status 2>/dev/null | grep -qE 'ghcr\.io/margey/bazzite|bazzite-(gnome|deck)'; then
+    if ! rpm-ostree status 2>/dev/null | grep -qiE 'ghcr\.io/margeyshah/bazzite'; then
         echo "WARN: this host does not look like it is rebased to the MargeyShah/bazzite image."
         echo "      podman-docker et al. may be missing. See the image README to rebase."
     fi
@@ -94,6 +109,51 @@ install_flatpaks() {
             echo "flatpak already installed: $app"
         else
             flatpak install -y --noninteractive flathub "$app"
+        fi
+    done
+}
+
+# Resolve the download URL of the newest release asset matching a regex.
+resolve_asset_url() {
+    local repo="$1" pattern="$2"
+    curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
+        | grep -oE '"browser_download_url": *"[^"]+"' \
+        | sed -E 's/.*"(https[^"]+)"/\1/' \
+        | grep -E "$pattern" \
+        | head -n1
+}
+
+# Apps without a Flathub package, installed as AppImages and integrated into the
+# app menu via Gear Lever (it.mijorus.gearlever). Idempotent: skips if present.
+install_appimages() {
+    step "bazzite: appimages"
+    [ "${#APPIMAGE_APPS[@]}" -eq 0 ] && return 0
+    command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping AppImages"; return 0; }
+
+    mkdir -p "$HOME/Applications"
+    local entry repo name pattern url dest
+    for entry in "${APPIMAGE_APPS[@]}"; do
+        IFS='|' read -r repo name pattern <<<"$entry"
+        dest="$HOME/Applications/${name}.AppImage"
+        if [ -f "$dest" ]; then
+            echo "AppImage already installed: $name"
+        else
+            url="$(resolve_asset_url "$repo" "$pattern")"
+            if [ -z "$url" ]; then
+                echo "WARN: no AppImage asset matching '$pattern' in ${repo}; skipping $name"
+                continue
+            fi
+            echo "Downloading $name from $url"
+            curl -fL "$url" -o "$dest"
+            chmod +x "$dest"
+        fi
+
+        # Integrate into the app menu + update checks with Gear Lever.
+        if flatpak info it.mijorus.gearlever >/dev/null 2>&1; then
+            flatpak run it.mijorus.gearlever --integrate "$dest" 2>/dev/null \
+                || echo "WARN: Gear Lever could not integrate $name (open Gear Lever manually)"
+        else
+            echo "WARN: Gear Lever not installed; $name left unintegrated in $HOME/Applications"
         fi
     done
 }
@@ -171,6 +231,7 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
 fi
 
 install_flatpaks
+install_appimages
 install_podman_docker
 create_container
 provision_container

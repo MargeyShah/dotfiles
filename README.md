@@ -37,9 +37,11 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    the image) provides the `docker` CLI against Podman; there is no Docker
    daemon.
 
-   Opt-in gaming extras (prompted, or force with `--gaming` / skip with
-   `--no-gaming`) are installed via Bazzite's own targets:
-   `ujust get-emudeck install` and `ujust setup-decky install`.
+   Gaming extras are installed automatically (every target host is a gaming
+   host; skip with `--no-gaming`): **EmuDeck** (`ujust get-emudeck install`),
+   **Decky Loader** (`ujust setup-decky install`), and these **Decky plugins**
+   from the Decky store: CSS Loader, SteamGridDB, ProtonDB Badges, HLTB for
+   Deck, TabMaster, PlayCount, IsThereAnyDeal for Deck, and Decky LSFG-VK.
 
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
 used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.

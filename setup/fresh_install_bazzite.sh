@@ -65,6 +65,22 @@ APPIMAGE_APPS=(
     "wimpysworld/sidra|Sidra|Sidra-linux-x86_64\.AppImage$"
 )
 
+# Decky Loader plugins to install from the Decky store (deckbrew), by store
+# display name. Installed into ~/homebrew/plugins by verifying + extracting the
+# store zip; no config is synced between machines.
+DECKY_PLUGINS=(
+    "CSS Loader"
+    "SteamGridDB"
+    "ProtonDB Badges"
+    "HLTB for Deck"
+    "TabMaster"
+    "PlayCount"
+    "IsThereAnyDeal for Deck"
+    "Decky LSFG-VK"
+)
+DECKY_STORE_URL="https://plugins.deckbrew.xyz/plugins"
+DECKY_ARTIFACT_URL="https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions"
+
 # ---------- Guards ----------
 
 if [[ $(id -u) -eq 0 ]]; then
@@ -165,9 +181,10 @@ install_appimages() {
 }
 
 # Gaming extras installed via Bazzite's own `ujust` targets (not flatpaks, not
-# baked into the image). Opt-in because they are gaming/Game-Mode specific:
+# baked into the image). Always installed: every Bazzite host this targets is a
+# gaming host. (Use --no-gaming to skip.)
 #   - EmuDeck  : `ujust get-emudeck install` (installs an AppImage + wizard)
-#   - Decky    : `ujust setup-decky install` (only useful in Steam Game Mode)
+#   - Decky    : `ujust setup-decky install` (Decky Loader; used in Game Mode)
 # Both are interactive-capable but support a non-interactive action argument.
 install_gaming_extras() {
     step "bazzite: gaming extras (emudeck, decky)"
@@ -186,6 +203,72 @@ install_gaming_extras() {
     else
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
     fi
+}
+
+# True (0) if a Decky plugin with this store display name is already installed.
+decky_plugin_installed() {
+    local want="$1"
+    python3 - "$HOME/homebrew/plugins" "$want" <<'PY'
+import glob, json, sys
+for f in glob.glob(sys.argv[1] + "/*/plugin.json"):
+    try:
+        if json.load(open(f)).get("name") == sys.argv[2]:
+            sys.exit(0)
+    except Exception:
+        pass
+sys.exit(1)
+PY
+}
+
+# Install Decky plugins from the Decky store (deckbrew). Each plugin zip is
+# hash-verified (sha256 from the store index) and extracted into
+# ~/homebrew/plugins; a plugin's top-level folder is a slug (e.g. SDH-CssLoader),
+# so "already installed" is detected via the plugin.json "name" field.
+# Fail-soft: any single plugin failing never aborts the run. No config sync.
+install_decky_plugins() {
+    step "bazzite: decky plugins"
+    [ "${#DECKY_PLUGINS[@]}" -eq 0 ] && return 0
+    command -v python3 >/dev/null 2>&1 || { echo "WARN: python3 missing; skipping Decky plugins"; return 0; }
+    pkg_exists unzip || { echo "WARN: unzip missing; skipping Decky plugins"; return 0; }
+
+    local plugins_dir="$HOME/homebrew/plugins"
+    mkdir -p "$plugins_dir"
+
+    local store_json="$TEMP_DIR/decky-store.json"
+    if ! curl -fsSL "$DECKY_STORE_URL" -o "$store_json"; then
+        echo "WARN: could not fetch Decky store; skipping plugin installs"
+        return 0
+    fi
+
+    local name hash zip got
+    for name in "${DECKY_PLUGINS[@]}"; do
+        if decky_plugin_installed "$name"; then
+            echo "Decky plugin already installed: $name"
+            continue
+        fi
+
+        hash="$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+print(next((p["versions"][0]["hash"] for p in d if p.get("name")==sys.argv[2]),""))' "$store_json" "$name")"
+        if [ -z "$hash" ]; then
+            echo "WARN: '$name' not found in Decky store; skipping"
+            continue
+        fi
+
+        zip="$TEMP_DIR/decky-${hash:0:12}.zip"
+        if ! curl -fsSL "${DECKY_ARTIFACT_URL}/${hash}.zip" -o "$zip"; then
+            echo "WARN: download failed for Decky plugin: $name"; continue
+        fi
+        got="$(sha256sum "$zip" | awk '{print $1}')"
+        if [ "$got" != "$hash" ]; then
+            echo "WARN: checksum mismatch for Decky plugin: $name; skipping"
+            rm -f "$zip"
+            continue
+        fi
+        unzip -q -o "$zip" -d "$plugins_dir"
+        rm -f "$zip"
+        echo "Installed Decky plugin: $name"
+    done
 }
 
 # Verify the podman-docker shim (baked into the custom image) so `docker` works.
@@ -251,35 +334,29 @@ set_default_terminal() {
 
 # ---------- Flow ----------
 
-# Optional gaming extras (EmuDeck + Decky) via ujust. Non-interactive override:
-#   ./fresh_install_bazzite.sh --gaming      (install them)
-#   ./fresh_install_bazzite.sh --no-gaming   (skip them)
-GAMING_EXTRAS="ask"
-case "${1:-}" in
-    --gaming)    GAMING_EXTRAS="yes" ;;
-    --no-gaming) GAMING_EXTRAS="no"  ;;
-esac
+# Gaming extras (EmuDeck + Decky + Decky plugins) are always installed: every
+# Bazzite host this targets is a gaming host. Escape hatch: --no-gaming.
+GAMING_EXTRAS="yes"
+[[ "${1:-}" == "--no-gaming" ]] && GAMING_EXTRAS="no"
 
 echo "Bazzite bootstrap"
 echo "  container: ${CONTAINER_NAME}"
 echo "  flatpaks:  ${DESKTOP_FLATPAKS[*]}"
 echo "  appimages: ${APPIMAGE_APPS[*]}"
+echo "  decky:     ${DECKY_PLUGINS[*]}"
 read -rp "Do you want to continue? (y/n): " confirm
 if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     echo "Script aborted."
     exit 1
 fi
 
-# Gaming extras are gaming/Game-Mode specific, so ask unless overridden by flag.
-if [[ "$GAMING_EXTRAS" == "ask" ]]; then
-    read -rp "Install gaming extras (EmuDeck + Decky Loader)? (y/n): " g
-    if [[ "$g" == "y" || "$g" == "Y" ]]; then GAMING_EXTRAS="yes"; else GAMING_EXTRAS="no"; fi
-fi
-
 install_flatpaks
 install_appimages
 install_podman_docker
-[[ "$GAMING_EXTRAS" == "yes" ]] && install_gaming_extras
+if [[ "$GAMING_EXTRAS" == "yes" ]]; then
+    install_gaming_extras
+    install_decky_plugins
+fi
 create_container
 provision_container
 set_default_terminal

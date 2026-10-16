@@ -23,6 +23,10 @@ source "${SCRIPT_DIR}/../lib.sh"
 OS="ubuntu"
 FAMILY="ubuntu"
 
+# lib.sh's step()/on_fail() write into $TEMP_DIR; ensure it exists.
+mkdir -p "$TEMP_DIR"
+cd "$TEMP_DIR"
+
 # Container is not a "server": keep interactive tools (zellij, etc.).
 PROFILE="${PROFILE:-desktop}"
 

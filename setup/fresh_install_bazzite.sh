@@ -112,7 +112,7 @@ install_podman_docker() {
 # Create (idempotently) the Ubuntu Distrobox container.
 create_container() {
     step "bazzite: distrobox container"
-    if distrobox list --no-color 2>/dev/null | awk '{print $3}' | grep -qx "$CONTAINER_NAME"; then
+    if distrobox list 2>/dev/null | grep -qw "$CONTAINER_NAME"; then
         echo "distrobox container '$CONTAINER_NAME' already exists."
         return 0
     fi

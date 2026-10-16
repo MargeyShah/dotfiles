@@ -1,0 +1,58 @@
+#!/bin/bash
+# Runs INSIDE the Ubuntu Distrobox container (not on the Bazzite host).
+#
+# Bazzite's host is immutable + flatpak-first, so the apt-based terminal
+# toolchain lives here, in an Ubuntu container. We reuse the same OOP app
+# framework as fresh_install.sh by sourcing setup/lib.sh (the container shares
+# the host's $HOME, so ~/.scripts is available). Inside the container the
+# detected FAMILY is "ubuntu", which is exactly what the framework's ubuntu
+# branches target.
+#
+# Only dependency-management apps run here. Host concerns (systemd, snap, ssh,
+# cron, dotfile *policy*) stay on the host or in fresh_install_bazzite.sh.
+
+set -o pipefail
+set -eE
+shopt -s nullglob
+
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+# shellcheck source=../lib.sh
+source "${SCRIPT_DIR}/../lib.sh"
+
+# Force the ubuntu family regardless of what detection found.
+OS="ubuntu"
+FAMILY="ubuntu"
+
+# Container is not a "server": keep interactive tools (zellij, etc.).
+PROFILE="${PROFILE:-desktop}"
+
+# ---- Container-specific overrides -------------------------------------------
+# app_nvim is brew-only in lib.sh (a fresh mac/ubuntu installs Linuxbrew first).
+# The container has no Homebrew, so install Neovim from apt instead.
+app_nvim() {
+    step "nvim"
+    pkg_exists nvim && return
+    sudo apt install -y neovim
+}
+
+# The container needs no Homebrew at all; skip it explicitly in case it ever
+# slips into a shared list.
+app_brew() { step "homebrew (skipped in container)"; return 0; }
+
+# ---- Install ----------------------------------------------------------------
+install_apps bazzite_deps \
+    base \
+    zinit \
+    fzf \
+    nvim \
+    cargo \
+    luarocks \
+    starship \
+    zellij \
+    pyenv \
+    pyenv_version \
+    nvm \
+    nerd_fonts \
+    duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
+
+echo "Container provisioning complete."

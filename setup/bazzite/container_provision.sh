@@ -43,6 +43,14 @@ app_nvim() {
 # slips into a shared list.
 app_brew() { step "homebrew (skipped in container)"; return 0; }
 
+# app_just in lib.sh uses the mpr/makedeb route, which isn't available in a bare
+# ubuntu:24.04 container. Prefer apt, fall back to cargo.
+app_just() {
+    step "just"
+    pkg_exists just && return
+    sudo apt install -y just 2>/dev/null || cargo install just
+}
+
 # OpenCode CLI — installed here (in the Ubuntu Distrobox) rather than on the
 # Bazzite host, matching the ~/.opencode/bin PATH in dotfiles/.zshrc. Uses the
 # official installer.
@@ -67,6 +75,10 @@ install_apps bazzite_deps \
     nvm \
     nerd_fonts \
     opencode \
+    gh \
+    kubectl \
+    just \
+    ssh \
     duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 
 echo "Container provisioning complete."

@@ -663,6 +663,57 @@ app_cron() {
     sync_system_config
 }
 
+# SSH identity + git commit signing + key push to pistachio.
+# OS-agnostic (runs on the host for apt/brew and inside the Bazzite Distrobox,
+# which shares $HOME), so the key and git config apply everywhere at once.
+PISTACHIO_HOST="pistachio"
+PISTACHIO_IP="192.168.0.2"
+PISTACHIO_USER="margey"
+
+app_ssh() {
+    step "ssh key + git signing"
+    local key="$HOME/.ssh/id_ed25519"
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
+
+    # ssh-keygen/ssh-copy-id come from openssh-client (built into macOS).
+    if ! pkg_exists ssh-keygen; then
+        case "$FAMILY" in
+            ubuntu|bazzite) sudo apt install -y openssh-client ;;
+        esac
+    fi
+
+    # 1. Generate an ed25519 identity if one doesn't exist yet.
+    if [ ! -f "$key" ]; then
+        ssh-keygen -t ed25519 -N "" -C "margey@$(hostname)" -f "$key"
+    fi
+    chmod 600 "$key" 2>/dev/null || true
+    chmod 644 "$key.pub" 2>/dev/null || true
+
+    # 2. Trust the host + copy the key to pistachio (best-effort; may prompt).
+    trap - ERR
+    grep -qF "$PISTACHIO_IP" "$HOME/.ssh/known_hosts" 2>/dev/null \
+        || ssh-keyscan -H "$PISTACHIO_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+    if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
+            "${PISTACHIO_USER}@${PISTACHIO_IP}" true >/dev/null 2>&1; then
+        echo "Copying SSH key to ${PISTACHIO_HOST} (${PISTACHIO_USER}@${PISTACHIO_IP}); may prompt for a password..."
+        ssh-copy-id -i "$key.pub" "${PISTACHIO_USER}@${PISTACHIO_IP}" \
+            || echo "WARN: could not copy key to ${PISTACHIO_HOST}"
+    fi
+
+    # 3. Register the public key on GitHub (best-effort; needs 'gh auth login').
+    if pkg_exists gh; then
+        gh ssh-key add "$key.pub" --title "margey@$(hostname) (ed25519)" 2>/dev/null \
+            || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
+    fi
+    trap 'on_fail' ERR
+
+    # 4. Sign commits with this SSH key so they show as Verified on GitHub.
+    git config --global gpg.format ssh
+    git config --global user.signingkey "$key.pub"
+    git config --global commit.gpgsign true
+}
+
 # --- Disney (work Mac) apps ---
 
 app_poetry() {
@@ -709,6 +760,8 @@ install_deps() {
         pyenv_version \
         nvm \
         nerd_fonts \
+        gh \
+        ssh \
         duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 }
 
@@ -755,16 +808,22 @@ dotfile_config() {
     backup_path "$HOME/.config/nvim"
     backup_path "$HOME/.config/kitty"
     backup_path "$HOME/.local/share/zinit/snippets"
+    backup_path "$HOME/.ssh/config"
 
     step "dotfiles: remove existing config"
     rm -f "$HOME/.zprofile"
     rm -f "$HOME/.zshrc"
     rm -rf "$HOME/.config/kitty"
     rm -rf "$HOME/.local/share/zinit/snippets"
+    # Stale misnamed file (ssh reads ~/.ssh/config, not .config); superseded by
+    # the managed ~/.ssh/config symlink below.
+    rm -f "$HOME/.ssh/.config"
 
     step "dotfiles: create dirs"
     mkdir -p "$HOME/.config"
     mkdir -p "$HOME/.local/share/zinit/snippets"
+    mkdir -p "$HOME/.ssh"
+    chmod 700 "$HOME/.ssh"
 
     step "dotfiles: symlink config"
     nvim_handroll
@@ -773,6 +832,7 @@ dotfile_config() {
         link "$_f" "$HOME/.local/share/zinit/snippets/"
     done
     link "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
+    link "$PROJECT_DIR/dotfiles/ssh/config" "$HOME/.ssh/config"
 
     if [[ "$PROFILE" == "server" ]]; then
         step "dotfiles: system config (fstab + crontab)"

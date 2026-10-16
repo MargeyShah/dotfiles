@@ -1,0 +1,9 @@
+# Managed by the dotfiles repo (symlinked to ~/.ssh/config by setup/lib.sh).
+# Put machine-specific, non-committed entries in ~/.ssh/config.local and add:
+#   Include ~/.ssh/config.local
+
+Host pistachio
+    HostName 192.168.0.2
+    User margey
+    IdentityFile ~/.ssh/id_ed25519
+    IdentitiesOnly yes

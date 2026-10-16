@@ -83,6 +83,8 @@ DECKY_PLUGINS=(
     "Game Theme Music"
     "Quick Launch"
     "Volume Mixer"
+    "EmuDecky"
+    "MusicControl"
 )
 DECKY_STORE_URL="https://plugins.deckbrew.xyz/plugins"
 DECKY_ARTIFACT_URL="https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions"

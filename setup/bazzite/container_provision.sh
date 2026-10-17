@@ -90,11 +90,30 @@ install_apps bazzite_deps \
     android_tools \
     duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 
-# Make zsh the default shell inside the container (app_base installed it), so
-# `distrobox enter` lands in zsh even without the explicit `-- zsh -l`.
+# Make zsh the shell everywhere inside the container, by forcing $SHELL (not by
+# editing /etc/passwd via chsh).
+#
+# The terminal enters the box via Ptyxis's profile "Use Custom Command" =
+# `distrobox enter bazzite-ubuntu -- zsh -l` (set on the host by
+# fresh_install_bazzite.sh), so the login shell is already zsh. But distrobox
+# carries the host's SHELL=bash into the box, and zsh login shells do NOT source
+# /etc/profile.d/distrobox_profile.sh (which would otherwise correct SHELL from
+# /etc/passwd). Tools that read $SHELL — zellij panes, nvim :term, etc. — would
+# therefore see bash. /etc/zsh/zshenv is sourced on EVERY zsh invocation, so it
+# is the one reliable place to make $SHELL agree everywhere.
+#
+# (The old approach of `chsh -s zsh` in /etc/passwd was removed: it does not
+# affect $SHELL for zsh, and was redundant with the Ptyxis custom command.)
 if command -v zsh >/dev/null 2>&1; then
-    sudo chsh -s "$(command -v zsh)" "$(id -un)" 2>/dev/null \
-        || echo "WARN: could not set zsh as the default shell in the container"
+    if ! grep -qF 'export SHELL="/usr/bin/zsh"' /etc/zsh/zshenv 2>/dev/null; then
+        printf '\n# Container default shell: force SHELL=zsh so all tools (zellij, nvim :term, etc.) agree.\nexport SHELL="/usr/bin/zsh"\n' \
+            | sudo tee -a /etc/zsh/zshenv >/dev/null
+        echo "Set SHELL=/usr/bin/zsh in /etc/zsh/zshenv (all zsh invocations)."
+    else
+        echo "SHELL=/usr/bin/zsh already set in /etc/zsh/zshenv."
+    fi
+else
+    echo "WARN: zsh not installed in the container; SHELL not overridden."
 fi
 
 echo "Container provisioning complete."

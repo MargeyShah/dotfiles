@@ -20,6 +20,64 @@ xh() { command xh "$@" --style monokai; }
 alias grep="rg"
 alias j='just'
 
+# ---------- Distrobox (Bazzite) ----------
+# `dbt` = "distrobox toggle". fzf menu (like q()) of terminal options: the plain
+# host shell plus every Distrobox container. Choosing one opens a new Ptyxis
+# window: the host choice opens a plain host shell; a container choice runs
+# `distrobox enter <box>` (landing in the box's default login shell, i.e. zsh).
+#
+# Ptyxis/distrobox are HOST binaries, so when this runs inside a Distrobox
+# (the default-terminal case) they are reached through host-spawn. fzf runs
+# locally either way.
+_dbt_host_cmd() {
+    # Echo the command prefix used to run HOST binaries from the current shell
+    # (empty when already on the host).
+    if [ -n "$CONTAINER_ID" ] && command -v host-spawn >/dev/null 2>&1; then
+        echo "host-spawn sh -c"
+    else
+        echo ""
+    fi
+}
+
+dbt() {
+    command -v fzf >/dev/null 2>&1 || { echo "fzf not installed" >&2; return 1; }
+    local host_prefix
+    host_prefix="$(_dbt_host_cmd)"
+
+    # Enumerate: a static "host" option, then one per Distrobox container.
+    local -a options
+    options=("host")
+    local box
+    while IFS= read -r box; do
+        [ -n "$box" ] && options+=("$box")
+    done < <(
+        if [ -n "$host_prefix" ]; then
+            host-spawn sh -c 'distrobox list --no-color' 2>/dev/null
+        else
+            distrobox list --no-color 2>/dev/null
+        fi \
+        | awk -F'|' 'NF>=2 { name=$2; gsub(/^[ \t]+|[ \t]+$/, "", name); if (name != "" && name != "NAME") print name }'
+    )
+
+    local choice
+    choice="$(printf '%s\n' "${options[@]}" | fzf --prompt='terminal> ')"
+    [ -n "$choice" ] || return 0
+
+    if [[ "$choice" == "host" ]]; then
+        if [ -n "$host_prefix" ]; then
+            host-spawn sh -c 'ptyxis --new-window' 2>/dev/null &
+        else
+            ptyxis --new-window 2>/dev/null &
+        fi
+    else
+        if [ -n "$host_prefix" ]; then
+            host-spawn sh -c "ptyxis -x \"distrobox enter '$choice' -- zsh -l\"" 2>/dev/null &
+        else
+            ptyxis -x "distrobox enter '$choice' -- zsh -l" 2>/dev/null &
+        fi
+    fi
+}
+
 function run()
 {
 	for var in "$@"

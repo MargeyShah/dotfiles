@@ -42,6 +42,14 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    the image) provides the `docker` CLI against Podman; there is no Docker
    daemon.
 
+   **Default terminal** is a Ptyxis profile using "Use Custom Command" =
+   `distrobox enter bazzite-ubuntu -- zsh -l` (host container, custom command —
+   not `default-container`, which ignores a custom shell). Inside the box,
+   `$SHELL` is forced to `/usr/bin/zsh` via `/etc/zsh/zshenv` so every tool
+   (zellij panes, nvim `:term`, …) agrees; zellij's `default_shell "zsh"` is
+   pinned in the managed `~/.config/zellij/config.kdl`. Use `dbt` (an fzf menu,
+   like `q()`) to switch between the host shell and any Distrobox.
+
    Gaming extras are installed automatically (every target host is a gaming
    host; skip with `--no-gaming`): **EmuDeck** (`ujust get-emudeck install`),
    **Decky Loader** (`ujust setup-decky install`), **Bazzite Buddy**

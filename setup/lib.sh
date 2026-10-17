@@ -832,6 +832,7 @@ dotfile_config() {
     backup_path "$HOME/.zshrc"
     backup_path "$HOME/.config/nvim"
     backup_path "$HOME/.config/kitty"
+    backup_path "$HOME/.config/zellij"
     backup_path "$HOME/.local/share/zinit/snippets"
     backup_path "$HOME/.ssh/config"
 
@@ -839,6 +840,7 @@ dotfile_config() {
     rm -f "$HOME/.zprofile"
     rm -f "$HOME/.zshrc"
     rm -rf "$HOME/.config/kitty"
+    rm -rf "$HOME/.config/zellij"
     rm -rf "$HOME/.local/share/zinit/snippets"
     # Stale misnamed file (ssh reads ~/.ssh/config, not .config); superseded by
     # the managed ~/.ssh/config symlink below.
@@ -853,9 +855,18 @@ dotfile_config() {
     step "dotfiles: symlink config"
     nvim_handroll
     link "$PROJECT_DIR/dotfiles/.config/kitty" "$HOME/.config/kitty"
+    link "$PROJECT_DIR/dotfiles/.config/zellij" "$HOME/.config/zellij"
     for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
         link "$_f" "$HOME/.local/share/zinit/snippets/"
     done
+    # zinit copies + compiles local snippets into sibling cache dirs (named
+    # after the absolute source path, e.g. home--margey--...--snippets/config.zsh)
+    # and keeps loading those instead of re-reading edits through the symlink.
+    # Clear them so updated snippets take effect on the next shell. (-mindepth 1
+    # keeps the snippets dir itself, so the symlinks above survive; the cache
+    # dirs are real dirs, the symlinks are not -type d.)
+    find "$HOME/.local/share/zinit/snippets" -mindepth 1 -maxdepth 1 -type d \
+        -exec rm -rf {} + 2>/dev/null || true
     link "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
     link "$PROJECT_DIR/dotfiles/ssh/config" "$HOME/.ssh/config"
 

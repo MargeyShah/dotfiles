@@ -22,7 +22,7 @@
 #      (Proton Plus, Sunshine, Wake-on-LAN, Virtualization, CoolerControl, etc.),
 #   4. creates the Ubuntu Distrobox container,
 #   5. provisions the container with the CLI toolchain (container_provision.sh),
-#   6. makes the container the default terminal,
+#   6. makes the container the default terminal (Ptyxis custom command; switch via `dbt`),
 #   7. symlinks the dotfiles on the host (dotfile_config from lib.sh).
 #
 # App objects and helpers are shared with fresh_install.sh via setup/lib.sh.
@@ -380,54 +380,109 @@ provision_container() {
     distrobox enter "$CONTAINER_NAME" -- bash "$CONTAINER_PROVISION"
 }
 
-# Make the container the default terminal by auto-entering it from an
-# interactive host shell, while always leaving a way back to the plain host
-# shell:
-#   * `db-off` / `db-on` toggle auto-entry (sentinel file ~/.no-distrobox).
-#     $HOME is shared with the container, so you can toggle from inside it too,
-#     then open a new terminal for a host shell.
-#   * `NO_DISTROBOX=1 <cmd>` skips auto-entry for a single shell/command.
-#   * if `distrobox enter` fails, drop to the host shell instead of the terminal
-#     just closing.
-# Marker-guarded: re-runs replace the previous block in place, so an older
-# snippet already in ~/.bashrc gets upgraded rather than left stale.
+# Host-side desktop tweaks applied on the Bazzite HOST (not in the Distrobox:
+# the container shares $HOME but not the host D-Bus/dconf session, so gsettings
+# run there would not reach the host GNOME session). Each entry is a full
+# command line; append more lines to add tweaks without touching the runner.
+# Run before the container is created/configured, so it happens while the
+# script is still firmly in the host shell.
+HOST_CONFIG_CMDS=(
+    "gsettings set org.gnome.desktop.wm.preferences focus-new-windows 'smart'"
+    "gsettings set org.gnome.desktop.wm.preferences auto-raise true"
+)
+
+# Run each HOST_CONFIG_CMDS entry, fail-soft (one bad command never aborts the
+# run) and report what happened.
+apply_host_config() {
+    step "bazzite: host config"
+    [ "${#HOST_CONFIG_CMDS[@]}" -eq 0 ] && return 0
+
+    local cmd
+    for cmd in "${HOST_CONFIG_CMDS[@]}"; do
+        echo "host config: $cmd"
+        if eval "$cmd" 2>&1; then
+            :
+        else
+            echo "WARN: host config command failed: $cmd"
+        fi
+    done
+}
+
+# Make the container the default terminal via Ptyxis's profile "Use Custom
+# Command" (Bazzite's documented shell-swap pattern). The custom command is the
+# full `distrobox enter <box> -- zsh -l`, with default-container left at the
+# host ("session"/"My Computer").
+#
+# IMPORTANT (Bazzite docs + bazzite#3283): setting default-container to a
+# distrobox AND using a custom command to force a shell do NOT combine — the
+# distrobox agent reads the host's SHELL (bash) and ignores the custom shell, so
+# terminals land in bash. The working approach is: host container + full
+# `distrobox enter ... -- zsh -l` in the custom command.
+#
+# This also replaces an older approach that appended an `exec distrobox enter
+# ...` block to ~/.bashrc; that block is removed here so existing installs
+# migrate. Switching terminals remains the `dbt` fzf menu (dotfiles/zsh/config.zsh).
 set_default_terminal() {
     step "bazzite: default terminal"
+
+    # --- 1. Migrate: strip the old ~/.bashrc auto-entry block, if present. ---
     local rc="$HOME/.bashrc"
     local begin="# >>> bazzite distrobox terminal >>>"
     local end="# <<< bazzite distrobox terminal <<<"
-
-    # Upgrade path: strip any previous version of the block (markers included)
-    # before appending the current one.
     if [ -f "$rc" ] && grep -qF "$begin" "$rc"; then
         awk -v b="$begin" -v e="$end" '
             $0 == b { skip = 1; next }
             $0 == e { skip = 0; next }
             !skip   { print }
         ' "$rc" > "${rc}.tmp" && mv "${rc}.tmp" "$rc"
+        echo "Removed old distrobox-terminal block from $rc (Ptyxis handles it now)."
+    fi
+    # Drop the sentinel toggled by the old db-off/db-on-style hooks.
+    rm -f "$HOME/.no-distrobox"
+
+    # --- 2. Configure Ptyxis's default profile (host + custom command). ---
+    # These settings live on the HOST (dconf), so route through the host when the
+    # script is running inside a Distrobox; otherwise apply directly.
+    local run_on_host
+    if command -v dconf >/dev/null 2>&1; then
+        run_on_host() { "$@"; }
+    elif command -v host-spawn >/dev/null 2>&1; then
+        run_on_host() { host-spawn "$@"; }
+    else
+        echo "WARN: no dconf/host-spawn; cannot configure Ptyxis default profile."
+        echo "      Manually: Ptyxis Preferences -> Profile -> Use Custom Command = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'"
+        return 0
     fi
 
-    {
-        echo ""
-        echo "$begin"
-        echo "# Auto-enter the Ubuntu toolchain container for interactive shells."
-        echo "# CONTAINER_ID is set once inside a distrobox, so this cannot recurse."
-        echo "# Host-shell escape hatch: run 'db-off' (or NO_DISTROBOX=1 bash)."
-        echo "if [ -n \"\$PS1\" ] && [ -z \"\$CONTAINER_ID\" ] \\"
-        echo "   && [ -z \"\$NO_DISTROBOX\" ] && [ ! -e \"\$HOME/.no-distrobox\" ] \\"
-        echo "   && command -v distrobox >/dev/null 2>&1; then"
-        echo "    if distrobox enter ${CONTAINER_NAME} -- zsh -l; then"
-        echo "        exit  # container exited -> close this terminal too"
-        echo "    fi"
-        echo "    echo \"WARN: 'distrobox enter ${CONTAINER_NAME}' failed; dropping to the host shell.\" >&2"
-        echo "fi"
-        echo "# db-off/db-on: toggle auto-entry for future terminals. \$HOME is shared"
-        echo "# with the container, so these work from inside it as well."
-        echo "db-off() { touch \"\$HOME/.no-distrobox\"; echo 'Distrobox auto-entry OFF (open a new terminal for a host shell)'; }"
-        echo "db-on()  { rm -f \"\$HOME/.no-distrobox\";  echo 'Distrobox auto-entry ON (open a new terminal)'; }"
-        echo "$end"
-    } >> "$rc"
-    echo "Updated default-terminal snippet in $rc (takes effect in new shells)."
+    # New Ptyxis (>= 46) stores profile settings under /org/gnome/Ptyxis/Profiles/
+    # keyed by UUID; query the default profile UUID rather than hard-coding it.
+    local profile_uuid
+    profile_uuid="$(run_on_host dconf read /org/gnome/Ptyxis/default-profile-uuid 2>/dev/null \
+        | tr -d \"\' \ 2>/dev/null || true)"
+    # Strip the single-quotes dconf uses for string values.
+    profile_uuid="$(printf '%s' "$profile_uuid" | sed "s/^'//; s/'$//")"
+
+    if [ -z "$profile_uuid" ]; then
+        echo "WARN: could not determine Ptyxis default profile; not configuring it."
+        echo "      Manually: Ptyxis Preferences -> Profile -> Use Custom Command = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'"
+        return 0
+    fi
+
+    # Configure a "session" profile that runs the container via a custom command
+    # (see the function docstring above for why default-container stays "session").
+    local ok=1
+    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/default-container" "'session'" 2>/dev/null || ok=0
+    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/use-custom-command" "true" 2>/dev/null || ok=0
+    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/custom-command" "'distrobox enter ${CONTAINER_NAME} -- zsh -l'" 2>/dev/null || ok=0
+    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/login-shell" "false" 2>/dev/null || ok=0
+
+    if [ "$ok" -eq 1 ]; then
+        echo "Set Ptyxis default profile '${profile_uuid}' to enter ${CONTAINER_NAME} (zsh -l)."
+        echo "New terminals will open in the ${CONTAINER_NAME} container (run 'dbt' to switch)."
+    else
+        echo "WARN: failed to fully configure the Ptyxis profile. Set it manually:"
+        echo "      Ptyxis Preferences -> Profile -> 'Use Custom Command' = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'."
+    fi
 }
 
 # ---------- Flow ----------
@@ -454,6 +509,9 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     exit 1
 fi
 
+# Host-side desktop tweaks first: they must run on the host (not in the
+# container) and before distrobox is configured.
+apply_host_config
 install_flatpaks
 install_appimages
 install_podman_docker
@@ -471,4 +529,4 @@ dotfile_config
 
 # Success: remove temp dir (including backups).
 rm -rf "$TEMP_DIR"
-echo "Done! Open a new terminal to enter the ${CONTAINER_NAME} container."
+echo "Done! New terminals open in the ${CONTAINER_NAME} container (run 'dbt' to switch to the host shell or another box)."

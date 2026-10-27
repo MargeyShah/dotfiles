@@ -19,63 +19,50 @@ alias dig="doggo"
 xh() { command xh "$@" --style monokai; }
 alias grep="rg"
 alias j='just'
+alias oc="opencode"
 
-# ---------- Distrobox (Bazzite) ----------
-# `dbt` = "distrobox toggle". fzf menu (like q()) of terminal options: the plain
-# host shell plus every Distrobox container. Choosing one opens a new Ptyxis
-# window: the host choice opens a plain host shell; a container choice runs
-# `distrobox enter <box>` (landing in the box's default login shell, i.e. zsh).
-#
-# Ptyxis/distrobox are HOST binaries, so when this runs inside a Distrobox
-# (the default-terminal case) they are reached through host-spawn. fzf runs
-# locally either way.
-_dbt_host_cmd() {
-    # Echo the command prefix used to run HOST binaries from the current shell
-    # (empty when already on the host).
-    if [ -n "$CONTAINER_ID" ] && command -v host-spawn >/dev/null 2>&1; then
-        echo "host-spawn sh -c"
-    else
-        echo ""
-    fi
-}
+# ---------- LM Studio (lms) ----------
+# `lms` lives in ~/.lmstudio/bin. Linux desktop hosts only (mac/wsl/servers
+# don't have it).
+if is_linux_desktop; then
+    export PATH="$PATH:$HOME/.lmstudio/bin"
+fi
 
-dbt() {
-    command -v fzf >/dev/null 2>&1 || { echo "fzf not installed" >&2; return 1; }
-    local host_prefix
-    host_prefix="$(_dbt_host_cmd)"
+# ---------- Keybindings ----------
+# Ctrl+Left/Right = word navigation. Cover both the short (\e[5D / \e[5C) and
+# extended (\e[1;5D / \e[1;5C) CSI forms so it works across terminals.
+bindkey '\e[1;5D' backward-word
+bindkey '\e[1;5C' forward-word
+bindkey '\e[5D' backward-word
+bindkey '\e[5C' forward-word
 
-    # Enumerate: a static "host" option, then one per Distrobox container.
-    local -a options
-    options=("host")
-    local box
-    while IFS= read -r box; do
-        [ -n "$box" ] && options+=("$box")
+# ---------- Distrobox ----------
+# `box` enters a Distrobox from the host shell. If exactly one container exists
+# it enters that one directly; with several it shows an fzf picker.
+box() {
+    local -a boxes
+    local b
+    while IFS= read -r b; do
+        [ -n "$b" ] && boxes+=("$b")
     done < <(
-        if [ -n "$host_prefix" ]; then
-            host-spawn sh -c 'distrobox list --no-color' 2>/dev/null
-        else
-            distrobox list --no-color 2>/dev/null
-        fi \
-        | awk -F'|' 'NF>=2 { name=$2; gsub(/^[ \t]+|[ \t]+$/, "", name); if (name != "" && name != "NAME") print name }'
+        distrobox list --no-color 2>/dev/null \
+            | awk -F'|' 'NF >= 2 { n = $2; gsub(/^[ \t]+|[ \t]+$/, "", n); if (n != "" && n != "NAME") print n }'
     )
 
-    local choice
-    choice="$(printf '%s\n' "${options[@]}" | fzf --prompt='terminal> ')"
-    [ -n "$choice" ] || return 0
-
-    if [[ "$choice" == "host" ]]; then
-        if [ -n "$host_prefix" ]; then
-            host-spawn sh -c 'ptyxis --new-window' 2>/dev/null &
-        else
-            ptyxis --new-window 2>/dev/null &
-        fi
-    else
-        if [ -n "$host_prefix" ]; then
-            host-spawn sh -c "ptyxis -x \"distrobox enter '$choice' -- zsh -l\"" 2>/dev/null &
-        else
-            ptyxis -x "distrobox enter '$choice' -- zsh -l" 2>/dev/null &
-        fi
+    if [ ${#boxes} -eq 0 ]; then
+        echo "box: no Distrobox containers found" >&2
+        return 1
     fi
+
+    local choice
+    if [ ${#boxes} -eq 1 ]; then
+        choice="${boxes[1]}"
+    else
+        choice="$(printf '%s\n' "${boxes[@]}" | fzf --prompt='box> ')" || return 0
+        [ -n "$choice" ] || return 0
+    fi
+
+    distrobox enter "$choice"
 }
 
 function run()

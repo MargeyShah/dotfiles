@@ -1,5 +1,6 @@
-# pipX
-# https://github.com/pypa/pipx
+# pipX / uv
+# https://github.com/pypa/pipx | https://docs.astral.sh/uv/
+# ~/.local/bin is where pipx and uv (uv/uvx) install their binaries.
 export PATH="$PATH:$HOME/.local/bin"
 
 # golang
@@ -52,6 +53,10 @@ fi
 # Started eagerly so the terminal has reported its real size before zellij
 # creates its session (deferring to precmd caused a tiny window on WSL).
 # No ZELLIJ_AUTO_ATTACH: each terminal tab starts its own fresh session.
+#
+# zellij runs only on the host shell: is_server() is true inside a Distrobox
+# (see env.zsh), so containers never auto-start it. Zellij's panes themselves
+# are spawned inside the box via default_shell in config.kdl.
 
 if ! is_server; then
     command -v zellij >/dev/null 2>&1 && eval "$(zellij setup --generate-auto-start zsh)"

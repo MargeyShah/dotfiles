@@ -42,8 +42,20 @@ is_linuxlike() {
     is_env linux || is_env wsl
 }
 
-# is_server — true if the current host is a server
+# is_linux_desktop — true if the current host is in the Linux desktop list.
+# (is_env linux has an "any Linux" fallback for unlisted hosts, so it is not
+# strict enough for per-host gating; this tests the explicit list only.)
+is_linux_desktop() {
+    local h="${HOST:-$(hostname)}"
+    [[ " ${HOSTS_LINUX[@]} " == *" $h "* ]]
+}
+
+# is_server — true on a server host, and inside a Distrobox container.
+# Containers are treated like servers so zellij does not run there (zellij
+# lives on the host shell). $CONTAINER_ID is set by distrobox/podman inside the
+# box and needs no binary, so this is safe on hosts without distrobox installed.
 is_server() {
+    [ -n "${CONTAINER_ID:-}" ] && return 0
     local h="${HOST:-$(hostname)}"
     [[ " ${HOSTS_SERVER[@]} " == *" $h "* ]]
 }

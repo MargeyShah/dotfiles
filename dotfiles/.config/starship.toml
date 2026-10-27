@@ -1,0 +1,8 @@
+# Managed by the dotfiles repo (symlinked to ~/.config/starship.toml by
+# setup/lib.sh).
+#
+# Everything else stays at starship's defaults. The only change: the container
+# module (the "⬢ [name]" badge starship shows inside a Distrobox) is red by
+# default; make it green.
+[container]
+style = "bold green"

@@ -1,0 +1,38 @@
+#!/bin/sh
+# Zellij `default_shell` (see config.kdl): every new pane opens inside the
+# Bazzite Distrobox, so you work in the box while zellij itself runs on the
+# host.
+#
+# `distrobox enter` is run WITHOUT exec so it is a child of this script: `exit`
+# in the container returns here, and the pane then falls back to a host zsh.
+# Exit again and the pane closes (the host zsh is the pane's process).
+#
+# Deliberately fail-soft: hosts without distrobox (or without this container)
+# simply get a normal host shell pane.
+
+box="bazzite-ubuntu"
+
+# Already inside a box: never nest another `distrobox enter`.
+if [ -n "${CONTAINER_ID:-}" ]; then
+    exec zsh -l
+fi
+
+# Homebrew's zsh is not on the default PATH, so resolve it explicitly.
+host_zsh=""
+for candidate in /home/linuxbrew/.linuxbrew/bin/zsh /usr/bin/zsh /bin/zsh; do
+    if [ -x "$candidate" ]; then
+        host_zsh="$candidate"
+        break
+    fi
+done
+[ -n "$host_zsh" ] || host_zsh="/bin/bash"
+
+if command -v distrobox >/dev/null 2>&1 \
+    && distrobox list 2>/dev/null \
+        | awk -F'|' 'NF >= 2 { n = $2; gsub(/^[ \t]+|[ \t]+$/, "", n); print n }' \
+        | grep -qx "$box"; then
+    distrobox enter "$box" -- zsh -l
+fi
+
+# Reached on `exit` from the box (or immediately when it is unavailable).
+exec "$host_zsh" -l

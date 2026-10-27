@@ -347,7 +347,9 @@ default_mode "normal"
 // Default: $SHELL
 // 
 // default_shell "fish"
-default_shell "zsh"
+// Every pane opens inside the Bazzite Distrobox (falls back to a host shell on
+// machines without distrobox). See box-shell next to this file.
+default_shell "/home/margey/.scripts/dotfiles/.config/zellij/box-shell"
  
 // Choose the path to override cwd that zellij will use for opening new panes
 // 
@@ -428,6 +430,12 @@ default_shell "zsh"
 // copy_command "pbcopy"                     // osx
 // 
 // copy_command "pbcopy"
+
+// We pipe copies through wl-copy instead of zellij's OSC 52 fallback: Ptyxis
+// does not implement OSC 52, so the default silently did nothing. wl-clipboard
+// is installed both on the host and inside the Distrobox panes, and both see
+// the same $WAYLAND_DISPLAY/$XDG_RUNTIME_DIR.
+copy_command "wl-copy"
  
 // Choose the destination for copied text
 // Allows using the primary selection buffer (on x11/wayland) instead of the system clipboard.

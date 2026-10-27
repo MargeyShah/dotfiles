@@ -11,16 +11,33 @@ cd ~/.scripts/setup
 ./fresh_install.sh   # 1 server, 2 Unix PC (Linux desktop), 3 disney (Mac work), 4 dotfiles only
 ```
 
-(Option 4 installs/symlinks the dotfiles alone and assumes the profile from
-option 2 has already provisioned the toolchain — it will run into issues on a
-machine where that was never done.)
+Option 4 (`--profile dotfiles`) installs the shared dependency set and symlinks
+the dotfiles, without the desktop/server extras. It is the profile the Bazzite
+Distrobox is provisioned with.
 
 `nvimup` will update nvim configs from the https://github.com/joermo/dotfiles remote
 
+## Prompt
+
+`starship` uses the managed `dotfiles/.config/starship.toml` (symlinked to
+`~/.config/starship.toml`). It only overrides one thing: the `container` module
+— the `⬢ [name]` badge shown inside a Distrobox, which is **red** by default —
+is recoloured **green**. Everything else (the `<user> in <host> in <dir>`
+layout) stays at starship's defaults.
+
+## Host-gated config
+
+`dotfiles/zsh/env.zsh` holds the hostname lists (`HOSTS_WSL`, `HOSTS_LINUX`,
+`HOSTS_MAC`) and the `is_env` / `is_linux_desktop` / `is_server` / `is_work_mac`
+helpers. Per-host settings are gated on those lists rather than on the physical
+OS, e.g. the LM Studio `lms` PATH entry in `dotfiles/zsh/config.zsh` only applies
+on `HOSTS_LINUX` hosts.
+
 ## Bazzite
 
-Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
-(which refuses to run there). Instead:
+Bazzite is image-based (rpm-ostree), so `fresh_install.sh` is **not** run on the
+host (it refuses to). Instead the bootstrap below creates an Ubuntu Distrobox and
+runs `fresh_install.sh --profile dotfiles` *inside* it. Steps:
 
 1. **Custom image** — `github.com/MargeyShah/bazzite` builds flatpak-first
    Bazzite images (gnome / gnome-nvidia-open / deck-gnome / deck-nvidia-gnome).
@@ -31,24 +48,55 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    ~/.scripts/setup/fresh_install_bazzite.sh
    ```
 
-   This installs host GUI apps as **flatpaks** (Element, VS Code, Signal,
-   Vesktop, Plexamp, Hidamari, osu!, Ludusavi, Heroic, Gear Lever, Prism
-   Launcher, Cemu, RPCS3, Dolphin, XIVLauncher), installs **Helium** and
-   **Sidra** as AppImages
-   (via Gear Lever — no Flathub package exists),
-   creates an **Ubuntu Distrobox** container holding the apt CLI toolchain
-   (rust, nvm, pyenv, starship, fzf, nvim, opencode, …), makes that container
-   the default terminal, and symlinks the dotfiles. `podman-docker` (baked into
-   the image) provides the `docker` CLI against Podman; there is no Docker
-   daemon.
+   The **GUI apps are baked into the image** (`default-flatpaks` in the
+   MargeyShah/bazzite recipes: Element, VS Code, Signal, Plexamp, Hidamari,
+   osu!, Ludusavi, Heroic, Gear Lever, Flameshot, Proton Plus, Sunshine, Prism
+   Launcher, Cemu, RPCS3, Dolphin, XIVLauncher), so the bootstrap does not
+   re-install them. It only:
 
-   **Default terminal** is a Ptyxis profile using "Use Custom Command" =
-   `distrobox enter bazzite-ubuntu -- zsh -l` (host container, custom command —
-   not `default-container`, which ignores a custom shell). Inside the box,
-   `$SHELL` is forced to `/usr/bin/zsh` via `/etc/zsh/zshenv` so every tool
-   (zellij panes, nvim `:term`, …) agrees; zellij's `default_shell "zsh"` is
-   pinned in the managed `~/.config/zellij/config.kdl`. Use `dbt` (an fzf menu,
-   like `q()`) to switch between the host shell and any Distrobox.
+   - installs **Helium**, **Sidra**, **Ghostty** and **Vesktop** as AppImages in
+     `~/AppImages` via Gear Lever (none has a suitable Flathub package; Gear
+     Lever is the recommended way to manage AppImages). Download and integration
+     are checked independently, so a re-run only does the missing step,
+   - grants **Flameshot** the screenshot portal permission
+     (`flatpak permission-set screenshot screenshot org.flameshot.Flameshot yes`;
+     per-user, so it cannot be baked into the image),
+   - installs **zsh** on the host with Homebrew (never rpm-ostree) and makes it
+     the login shell via `usermod -s` (there is no `chsh` on Bazzite),
+   - creates the **Ubuntu Distrobox** and provisions it by running
+     `setup/fresh_install.sh --profile dotfiles` inside it — the same script and
+     app list as any other host, no Bazzite-specific copy. As a Distrobox
+     shares `$HOME`, that also symlinks the dotfiles for the host.
+
+   `podman-docker` (baked into the image) provides the `docker` CLI against
+   Podman; there is no Docker daemon.
+
+   **Terminals are not modified by the bootstrap.** No Ptyxis profile is written
+   and no shell rc file is touched. Enter the toolchain on demand with
+   `distrobox enter bazzite-ubuntu`, or run `box` (an fzf picker of every
+   Distrobox; it enters straight away when only one exists).
+
+   **Terminal flow:** a new window opens a **host zsh**
+   (Ptyxis profile: Container = `session`, Custom Command =
+   `/home/linuxbrew/.linuxbrew/bin/zsh -l`). That host shell auto-starts
+   **zellij**, and zellij's `default_shell` is
+   `dotfiles/.config/zellij/box-shell`, so **every pane runs inside
+   `bazzite-ubuntu`**. `distrobox enter` runs as a child of that wrapper (no
+   `exec`), so `exit` in the box falls back to a **host zsh in the same pane**;
+   `exit` again closes the pane. `box` is still there for ad-hoc use.
+
+   zellij never runs inside the container: `is_server()` in `env.zsh` returns
+   true when `$CONTAINER_ID` is set (which needs no distrobox binary, so it is
+   safe on hosts without it). The zellij config is only symlinked on **Linux
+   desktop** hosts (not servers, not mac) by `dotfile_config`.
+
+   **GNOME Shell extensions** are installed *and* default-enabled by the image
+   (the `gnome-extensions` + `gschema-overrides` modules), so the bootstrap does
+   not touch them. The **Element keyring override** and the **window-manager
+   defaults** are baked in the same way (`files` + `gschema-overrides`).
+
+   The script is intentionally a thin harness: everything declarative lives in
+   the image; it only does per-user/post-install work and the container.
 
    Gaming extras are installed automatically (every target host is a gaming
    host; skip with `--no-gaming`): **EmuDeck** (`ujust get-emudeck install`),
@@ -60,14 +108,14 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    EmuDecky, and MusicControl.
 
    **System extras** are also installed automatically (skip with `--no-extras`):
-   Proton Plus, Sunshine, Wake-on-LAN (`ujust wol enable`), Boot-to-Windows from
-   Steam, Virtualization (`ujust setup-virtualization virt-on`), input group
-   (`ujust add-user-to-input-group add`), CoolerControl (layers rpm; reboot),
-   LM Studio + VSCodium (Homebrew casks from `ublue-os/tap`), and Android
-   Platform Tools (adb/fastboot, inside the Distrobox).
-
-   Element gets a user flatpak override for keyring support on GNOME:
-   `flatpak override --user --talk-name=org.freedesktop.secrets im.riot.Riot`.
+   Wake-on-LAN (`ujust wol enable`), Boot-to-Windows from Steam, Virtualization
+   (`ujust setup-virtualization virt-on`), input group
+   (`ujust add-user-to-input-group add`), and LM Studio + VSCodium (Homebrew
+   casks from `ublue-os/tap`). Proton Plus, Sunshine and CoolerControl are baked
+   into the image instead — CoolerControl is an rpm-ostree layer, so **reboot
+   once after rebasing** to activate it. Android Platform Tools (adb/fastboot)
+   are part of the regular dotfiles dependency set and so are installed inside
+   the Distrobox.
 
    **Hanabi** (the GNOME Shell live-wallpaper extension used with Hidamari) is
    not on Flathub or extensions.gnome.org, so it is not installed automatically.
@@ -76,7 +124,11 @@ Bazzite is image-based (rpm-ostree), so it does **not** use `fresh_install.sh`
    `make install` and enable it in the Extensions app.
 
 `setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
-used by both `fresh_install.sh` and `fresh_install_bazzite.sh`.
+used by both `fresh_install.sh` and `fresh_install_bazzite.sh`. Its idempotency
+checks (`appimage_downloaded`, `appimage_integrated`, `ujust_installed`,
+`decky_plugin_installed`) let either script skip work that is already done —
+`appimage_integrated` asks Gear Lever itself (`--list-installed --json`) rather
+than guessing from filenames.
 
 ## SSH & commit signing
 

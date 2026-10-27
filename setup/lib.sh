@@ -57,10 +57,17 @@ link() {
 
 # Pull the nvim-handroll config from joermo/dotfiles and symlink it to ~/.config/nvim.
 nvim_handroll() {
-    if [ ! -d "$NVIM_HANDROLL_SRC" ]; then
+    if [ ! -d "$NVIM_HANDROLL_SRC/.git" ]; then
+        rm -rf "$NVIM_HANDROLL_SRC"
         git clone --depth 1 "$NVIM_HANDROLL_REPO" "$NVIM_HANDROLL_SRC"
     else
-        git -C "$NVIM_HANDROLL_SRC" pull --depth 1
+        # Fetch + hard reset instead of `git pull`: this is a shallow, read-only
+        # mirror of someone else's repo, and `git pull` aborts with "divergent
+        # branches" whenever the local shallow clone and origin have both moved
+        # (or a plugin bumped lazy-lock.json locally).
+        git -C "$NVIM_HANDROLL_SRC" fetch --depth 1 origin
+        git -C "$NVIM_HANDROLL_SRC" reset --hard origin/main
+        git -C "$NVIM_HANDROLL_SRC" clean -fdq
     fi
     mkdir -p "$HOME/.config"
     rm -rf "$HOME/.config/nvim"
@@ -70,6 +77,67 @@ nvim_handroll() {
 # Generic "is this app installed" check (by command name).
 pkg_exists() {
     command -v "$1" >/dev/null 2>&1
+}
+
+# ---------- Idempotency checks (shared by both install scripts) ----------
+# Each check answers "is this step already done?" so a re-run can skip only the
+# work that is actually missing (download vs. integrate vs. install target).
+
+# True if an AppImage file is already on disk (and executable-suitable).
+appimage_downloaded() {
+    [ -f "$1" ]
+}
+
+# True if Gear Lever has already integrated this app. Uses Gear Lever's own
+# status (`--list-installed --json`) rather than guessing from filenames, and
+# matches on the app name so a moved/re-named file still counts.
+appimage_integrated() {
+    local want="$1" json
+    command -v flatpak >/dev/null 2>&1 || return 1
+    json="$(flatpak run it.mijorus.gearlever --list-installed --json 2>/dev/null)" || return 1
+    [ -n "$json" ] || return 1
+    if command -v python3 >/dev/null 2>&1; then
+        # Gear Lever appends version/commit to some names ("Ghostty (97eea4)"),
+        # so accept an exact match or a "<name> ..." prefix.
+        printf '%s' "$json" | python3 -c '
+import json, sys
+want = sys.argv[1]
+try:
+    data = json.load(sys.stdin)
+except Exception:
+    sys.exit(1)
+for app in data.get("installed", []):
+    name = app.get("name") or ""
+    if name == want or name.startswith(want + " "):
+        sys.exit(0)
+sys.exit(1)
+' "$want"
+    else
+        printf '%s' "$json" | grep -q "\"name\": *\"${want}\""
+    fi
+}
+
+# True if a ujust recipe reports itself installed (`ujust <recipe> status`).
+ujust_installed() {
+    command -v ujust >/dev/null 2>&1 || return 1
+    ujust "$1" status 2>/dev/null | grep -qxE 'install(-prerelease)?'
+}
+
+# True if a Decky plugin with this store display name is already installed.
+# Plugin folders are slugs (e.g. SDH-CssLoader), so match the plugin.json name.
+decky_plugin_installed() {
+    local want="$1"
+    command -v python3 >/dev/null 2>&1 || return 1
+    python3 - "$HOME/homebrew/plugins" "$want" <<'PY'
+import glob, json, sys
+for f in glob.glob(sys.argv[1] + "/*/plugin.json"):
+    try:
+        if json.load(open(f)).get("name") == sys.argv[2]:
+            sys.exit(0)
+    except Exception:
+        pass
+sys.exit(1)
+PY
 }
 
 # ---------- Granular failure tracking ----------
@@ -609,13 +677,31 @@ app_just() {
     pkg_exists just && return
     case "$FAMILY" in
         ubuntu)
-            git clone 'https://mpr.makedeb.org/just'
-            cd just
-            makedeb -si
-            cd "$TEMP_DIR"
+            # apt first (Ubuntu ships it); makedeb/mpr isn't in a bare container
+            # and isn't worth the extra repo, so fall back to cargo.
+            sudo apt install -y just 2>/dev/null || cargo install just
             ;;
         mac) brew install just ;;
     esac
+}
+
+# Android Platform Tools (adb/fastboot). No Flathub package exists. On Bazzite
+# this lives in the Ubuntu Distrobox, where /dev is shared with the host for
+# device access.
+app_android_tools() {
+    step "android-platform-tools"
+    pkg_exists adb && return
+    case "$FAMILY" in
+        ubuntu) sudo apt install -y android-tools-adb android-tools-fastboot ;;
+        mac) brew install --cask android-platform-tools ;;
+    esac
+}
+
+# OpenCode CLI. Installed to ~/.opencode/bin (the PATH entry the dotfiles add).
+app_opencode() {
+    step "opencode"
+    pkg_exists opencode && return
+    curl -fsSL https://opencode.ai/install | bash
 }
 
 app_aws() {
@@ -786,6 +872,10 @@ install_deps() {
         nvm \
         nerd_fonts \
         gh \
+        kubectl \
+        just \
+        opencode \
+        android_tools \
         ssh \
         duf zoxide fd ripgrep xh dog procs dust gping lsd tree_sitter
 }
@@ -810,9 +900,8 @@ install_disney() {
 # ---------- Dotfiles ----------
 
 # Config-only half of dotfile_setup(): backup/remove/symlink the dotfiles and,
-# for the server profile, sync system config. No package installs here, so it
-# is safe to run on a host whose toolchain lives elsewhere (e.g. Bazzite, where
-# install_deps runs inside the Ubuntu Distrobox instead).
+# for the server profile, sync system config. No package installs happen here,
+# so it is also safe to call on its own.
 dotfile_config() {
     if [ -d "$HOME/.oh-my-zsh" ]; then
         echo ""
@@ -827,12 +916,28 @@ dotfile_config() {
         fi
     fi
 
+    # zellij's managed config carries box-shell (its default_shell), which opens
+    # every pane inside the Distrobox. That only makes sense on Linux desktops:
+    # servers never auto-start zellij, and box-shell is meaningless without
+    # distrobox. Gate on the hostname lists (servers are excluded).
+    local want_zellij="no"
+    if [ -f "$PROJECT_DIR/dotfiles/zsh/env.zsh" ]; then
+        # shellcheck source=../dotfiles/zsh/env.zsh
+        source "$PROJECT_DIR/dotfiles/zsh/env.zsh"
+        local _host="${HOST:-$(hostname)}"
+        if [[ " ${HOSTS_LINUX[*]} " == *" ${_host} "* \
+           && " ${HOSTS_SERVER[*]} " != *" ${_host} "* ]]; then
+            want_zellij="yes"
+        fi
+    fi
+
     step "dotfiles: backup existing config"
     backup_path "$HOME/.zprofile"
     backup_path "$HOME/.zshrc"
     backup_path "$HOME/.config/nvim"
     backup_path "$HOME/.config/kitty"
-    backup_path "$HOME/.config/zellij"
+    [ "$want_zellij" = "yes" ] && backup_path "$HOME/.config/zellij"
+    backup_path "$HOME/.config/starship.toml"
     backup_path "$HOME/.local/share/zinit/snippets"
     backup_path "$HOME/.ssh/config"
 
@@ -840,7 +945,8 @@ dotfile_config() {
     rm -f "$HOME/.zprofile"
     rm -f "$HOME/.zshrc"
     rm -rf "$HOME/.config/kitty"
-    rm -rf "$HOME/.config/zellij"
+    [ "$want_zellij" = "yes" ] && rm -rf "$HOME/.config/zellij"
+    rm -f "$HOME/.config/starship.toml"
     rm -rf "$HOME/.local/share/zinit/snippets"
     # Stale misnamed file (ssh reads ~/.ssh/config, not .config); superseded by
     # the managed ~/.ssh/config symlink below.
@@ -855,7 +961,12 @@ dotfile_config() {
     step "dotfiles: symlink config"
     nvim_handroll
     link "$PROJECT_DIR/dotfiles/.config/kitty" "$HOME/.config/kitty"
-    link "$PROJECT_DIR/dotfiles/.config/zellij" "$HOME/.config/zellij"
+    if [ "$want_zellij" = "yes" ]; then
+        link "$PROJECT_DIR/dotfiles/.config/zellij" "$HOME/.config/zellij"
+    else
+        echo "Skipping zellij config (linux desktop only; not on ${_host:-this host})."
+    fi
+    link "$PROJECT_DIR/dotfiles/.config/starship.toml" "$HOME/.config/starship.toml"
     for _f in "$PROJECT_DIR"/dotfiles/zsh/*; do
         link "$_f" "$HOME/.local/share/zinit/snippets/"
     done

@@ -6,8 +6,8 @@
 #
 #   * Host software is FLATPAK-FIRST. GUI apps come from Flathub; the host is
 #     never modified with rpm-ostree layers / dnf / copr by this script.
-#   * The apt-based CLI toolchain lives in an Ubuntu Distrobox container, which
-#     becomes the default terminal. (Distrobox + Podman ship with Bazzite.)
+#   * The apt-based CLI toolchain lives in an Ubuntu Distrobox container, entered
+#     on demand. (Distrobox + Podman ship with Bazzite.)
 #   * Containerised services use Podman/Quadlet, not Docker. `podman-docker` is
 #     baked into the custom image so the `docker` CLI works against Podman.
 #
@@ -16,14 +16,23 @@
 # signing + podman-docker). It then:
 #
 #   1. verifies it is running on Bazzite (and warns if not on the custom image),
-#   2. installs the host GUI apps as flatpaks (idempotent; mirrors the image),
-#   2b. installs the AppImage apps (Helium/Sidra) via Gear Lever,
+#   2. installs the AppImage apps (Helium/Sidra) via Gear Lever,
 #   3. installs gaming extras (EmuDeck, Decky + plugins) and system extras
 #      (Proton Plus, Sunshine, Wake-on-LAN, Virtualization, CoolerControl, etc.),
-#   4. creates the Ubuntu Distrobox container,
-#   5. provisions the container with the CLI toolchain (container_provision.sh),
-#   6. makes the container the default terminal (Ptyxis custom command; switch via `dbt`),
-#   7. symlinks the dotfiles on the host (dotfile_config from lib.sh).
+#   4. grants Flameshot the screenshot portal permission,
+#   5. installs zsh on the host via Homebrew and makes it the login shell,
+#   6. creates the Ubuntu Distrobox container, and
+#   7. provisions it by running the regular setup/fresh_install.sh inside the
+#      container with `--profile dotfiles` (no bespoke provisioning script).
+#
+# Terminals are NOT modified: no Ptyxis profile is written and no shell rc file
+# is touched. Enter the container on demand (`distrobox enter`, or the `box`
+# fzf picker in dotfiles/zsh/config.zsh).
+#
+# This is deliberately a thin harness: everything declarative lives in the image
+# (flatpaks, GNOME extensions + defaults, the Element keyring flatpak override,
+# desktop gsettings), so the script only does per-user/post-install work and the
+# container.
 #
 # App objects and helpers are shared with fresh_install.sh via setup/lib.sh.
 
@@ -38,28 +47,6 @@ source "${SCRIPT_DIR}/lib.sh"
 
 CONTAINER_NAME="bazzite-ubuntu"
 DISTROBOX_INI="${SCRIPT_DIR}/bazzite/distrobox.ini"
-CONTAINER_PROVISION="${SCRIPT_DIR}/bazzite/container_provision.sh"
-
-# Flathub IDs mirroring the desktop GUI apps from the apt profiles. GUI apps are
-# flatpaks on Bazzite, so these replace the element/vscode apt repo installs.
-# Keep this list in sync with default-flatpaks in the MargeyShah/bazzite recipes.
-DESKTOP_FLATPAKS=(
-    im.riot.Riot                     # Element
-    com.visualstudio.code            # Visual Studio Code
-    org.signal.Signal                # Signal Desktop
-    dev.vencord.Vesktop              # Vesktop (Discord)
-    com.plexamp.Plexamp              # Plexamp
-    io.github.jeffshee.Hidamari      # Hidamari (video wallpaper)
-    sh.ppy.osu                       # osu! (lazer)
-    com.github.mtkennerly.ludusavi   # Ludusavi (save backups)
-    com.heroicgameslauncher.hgl      # Heroic Games Launcher
-    it.mijorus.gearlever             # Gear Lever (AppImage manager)
-    org.prismlauncher.PrismLauncher  # Prism Launcher (Minecraft)
-    info.cemu.Cemu                   # Cemu (Wii U)
-    net.rpcs3.RPCS3                  # RPCS3 (PS3)
-    org.DolphinEmu.dolphin-emu       # Dolphin (GameCube/Wii)
-    dev.goats.xivlauncher            # XIVLauncher (FFXIV)
-)
 
 # Apps with no Flathub package, installed as AppImages and integrated via Gear
 # Lever. Format: "owner/repo|display-name|asset-filename-regex".
@@ -67,6 +54,9 @@ DESKTOP_FLATPAKS=(
 APPIMAGE_APPS=(
     "imputnet/helium-linux|Helium|helium-.*-x86_64\.AppImage$"
     "wimpysworld/sidra|Sidra|Sidra-linux-x86_64\.AppImage$"
+    "pkgforge-dev/ghostty-appimage|Ghostty|Ghostty-.*-x86_64\.AppImage$"
+    # Vesktop's x86_64 asset has no arch suffix (arm64 does: -arm64.AppImage).
+    "Vencord/Vesktop|Vesktop|Vesktop-[0-9.]+\.AppImage$"
 )
 
 # Decky Loader plugins to install from the Decky store (deckbrew), by store
@@ -127,32 +117,20 @@ cd "$TEMP_DIR"
 
 # ---------- Steps ----------
 
-# Host GUI apps as flatpaks (flatpak-first; no rpm layering).
-install_flatpaks() {
-    step "bazzite: flatpaks"
-    command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping flatpaks"; return 0; }
-
-    # Ensure Flathub is configured (Bazzite enables it by default).
-    if ! flatpak remotes --columns=name 2>/dev/null | grep -qx flathub; then
-        sudo flatpak remote-add --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+# Grant Flameshot the screenshot portal so its hotkey/portal path works.
+# This cannot live in the image: flatpak's permission store is per-user
+# (~/.local/share/flatpak/db/<table>, a GVariant DB), with no system-wide
+# equivalent, so it has to be written in the user's session.
+grant_flameshot_portal() {
+    step "bazzite: flameshot portal permission"
+    command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping Flameshot permission"; return 0; }
+    if ! flatpak info org.flameshot.Flameshot >/dev/null 2>&1; then
+        echo "WARN: Flameshot flatpak not installed; skipping portal permission"
+        return 0
     fi
-
-    local app
-    for app in "${DESKTOP_FLATPAKS[@]}"; do
-        if flatpak info "$app" >/dev/null 2>&1; then
-            echo "flatpak already installed: $app"
-        else
-            flatpak install -y --noninteractive flathub "$app"
-        fi
-    done
-
-    # Element needs to reach the Secret Service (keyring) for its secret storage.
-    if flatpak info im.riot.Riot >/dev/null 2>&1; then
-        flatpak override --user \
-            --talk-name=org.freedesktop.secrets \
-            im.riot.Riot \
-            || echo "WARN: could not apply Element keyring override"
-    fi
+    # No --user/--system flag exists for permission-set; the store is per-user.
+    flatpak permission-set screenshot screenshot org.flameshot.Flameshot yes \
+        || echo "WARN: could not grant Flameshot the screenshot portal"
 }
 
 # Resolve the download URL of the newest release asset matching a regex.
@@ -166,38 +144,62 @@ resolve_asset_url() {
 }
 
 # Apps without a Flathub package, installed as AppImages and integrated into the
-# app menu via Gear Lever (it.mijorus.gearlever). Idempotent: skips if present.
+# app menu via Gear Lever (it.mijorus.gearlever).
+#
+# AppImages live in ~/AppImages (Gear Lever's own directory) and each step is
+# checked independently, so a re-run only does what is missing:
+#   * already integrated  -> nothing (Gear Lever's --list-installed status)
+#   * downloaded, not yet -> integrate only
+#   * neither             -> download, then integrate
 install_appimages() {
     step "bazzite: appimages"
     [ "${#APPIMAGE_APPS[@]}" -eq 0 ] && return 0
     command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping AppImages"; return 0; }
 
-    mkdir -p "$HOME/Applications"
-    local entry repo name pattern url dest
+    mkdir -p "$HOME/AppImages"
+    # Download + integrate from a staging dir. Gear Lever treats a byte-identical
+    # file already sitting in its own ~/AppImages as "already integrated" and
+    # then skips creating the .desktop entry, so files must be handed over from
+    # somewhere else.
+    local stage="$TEMP_DIR/appimages"
+    mkdir -p "$stage"
+
+    local entry repo name pattern url managed src
     for entry in "${APPIMAGE_APPS[@]}"; do
         IFS='|' read -r repo name pattern <<<"$entry"
-        dest="$HOME/Applications/${name}.AppImage"
-        if [ -f "$dest" ]; then
-            echo "AppImage already installed: $name"
-        else
-            url="$(resolve_asset_url "$repo" "$pattern")"
-            if [ -z "$url" ]; then
-                echo "WARN: no AppImage asset matching '$pattern' in ${repo}; skipping $name"
-                continue
-            fi
-            echo "Downloading $name from $url"
-            curl -fL "$url" -o "$dest"
-            chmod +x "$dest"
+        managed="$HOME/AppImages/${name,,}.appimage"
+        src="$stage/${name}.AppImage"
+
+        if appimage_integrated "$name"; then
+            echo "AppImage already integrated: $name"
+            continue
         fi
 
-        # Integrate into the app menu + update checks with Gear Lever.
+        # Step 1: obtain the file (staged, or moved out of Gear Lever's dir).
+        if ! appimage_downloaded "$src"; then
+            if appimage_downloaded "$managed"; then
+                mv "$managed" "$src"
+                echo "Re-integrating existing AppImage: $name"
+            else
+                url="$(resolve_asset_url "$repo" "$pattern")"
+                if [ -z "$url" ]; then
+                    echo "WARN: no AppImage asset matching '$pattern' in ${repo}; skipping $name"
+                    continue
+                fi
+                echo "Downloading $name from $url"
+                curl -fL "$url" -o "$src"
+                chmod +x "$src"
+            fi
+        fi
+
+        # Step 2: integrate into the app menu + update checks with Gear Lever.
         # --yes avoids Gear Lever's interactive "integrate? (y/N)" prompt, which
         # otherwise blocks (and appears to hang) the script.
         if flatpak info it.mijorus.gearlever >/dev/null 2>&1; then
-            flatpak run it.mijorus.gearlever --integrate --yes "$dest" 2>/dev/null \
+            flatpak run it.mijorus.gearlever --integrate --yes "$src" 2>/dev/null \
                 || echo "WARN: Gear Lever could not integrate $name (open Gear Lever manually)"
         else
-            echo "WARN: Gear Lever not installed; $name left unintegrated in $HOME/Applications"
+            echo "WARN: Gear Lever not installed; $name left unintegrated in $HOME/AppImages"
         fi
     done
 }
@@ -213,16 +215,15 @@ install_gaming_extras() {
     step "bazzite: gaming extras (emudeck, decky)"
     command -v ujust >/dev/null 2>&1 || { echo "WARN: ujust not found; skipping EmuDeck/Decky"; return 0; }
 
-    # EmuDeck (status prints 'install' or 'uninstall').
-    if ujust get-emudeck status 2>/dev/null | grep -qx install; then
+    # EmuDeck.
+    if ujust_installed get-emudeck; then
         echo "EmuDeck already installed."
     else
         ujust get-emudeck install || echo "WARN: EmuDeck install failed (run 'ujust get-emudeck' manually)"
     fi
 
-    # Decky Loader (status prints 'install'/'install-prerelease'/'uninstall').
-    # Exact-match so the 'uninstall' status is not mistaken for installed.
-    if ujust setup-decky status 2>/dev/null | grep -qxE 'install(-prerelease)?'; then
+    # Decky Loader (status may be 'install' or 'install-prerelease').
+    if ujust_installed setup-decky; then
         echo "Decky Loader already installed."
     else
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
@@ -231,34 +232,20 @@ install_gaming_extras() {
     # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
     # so installed via its own ujust recipe into ~/homebrew/plugins/Bazzite Buddy).
     # It requires Decky Loader, so only install it once Decky is really present.
-    if ! ujust setup-decky status 2>/dev/null | grep -qxE 'install(-prerelease)?'; then
+    if ! ujust_installed setup-decky; then
         echo "WARN: Decky Loader not installed; skipping Bazzite Buddy"
-    elif ujust get-decky-bazzite-buddy status 2>/dev/null | grep -qx install; then
+    elif ujust_installed get-decky-bazzite-buddy; then
         echo "Bazzite Buddy already installed."
     else
         ujust get-decky-bazzite-buddy install || echo "WARN: Bazzite Buddy install failed (run 'ujust get-decky-bazzite-buddy' manually)"
     fi
 }
 
-# True (0) if a Decky plugin with this store display name is already installed.
-decky_plugin_installed() {
-    local want="$1"
-    python3 - "$HOME/homebrew/plugins" "$want" <<'PY'
-import glob, json, sys
-for f in glob.glob(sys.argv[1] + "/*/plugin.json"):
-    try:
-        if json.load(open(f)).get("name") == sys.argv[2]:
-            sys.exit(0)
-    except Exception:
-        pass
-sys.exit(1)
-PY
-}
-
 # Install Decky plugins from the Decky store (deckbrew). Each plugin zip is
 # hash-verified (sha256 from the store index) and extracted into
 # ~/homebrew/plugins; a plugin's top-level folder is a slug (e.g. SDH-CssLoader),
-# so "already installed" is detected via the plugin.json "name" field.
+# so "already installed" is detected via the plugin.json "name" field
+# (decky_plugin_installed in lib.sh).
 # Fail-soft: any single plugin failing never aborts the run. No config sync.
 install_decky_plugins() {
     step "bazzite: decky plugins"
@@ -313,10 +300,8 @@ install_system_extras() {
     step "bazzite: system extras"
 
     if command -v ujust >/dev/null 2>&1; then
-        # Proton Plus (flatpak) — Proton/Wine version manager.
-        ujust get-protonplus || echo "WARN: Proton Plus failed (run 'ujust get-protonplus')"
-        # Sunshine game-streaming host (flatpak).
-        ujust setup-sunshine enable-flatpak || echo "WARN: Sunshine failed (run 'ujust setup-sunshine')"
+        # Proton Plus (flatpak), Sunshine (flatpak) and CoolerControl (rpm) are
+        # baked into the MargeyShah/bazzite image, so they are not installed here.
         # Wake-on-LAN (udev/systemd config; persists across reboots).
         ujust wol enable || echo "WARN: Wake-on-LAN failed (run 'ujust wol enable')"
         # Boot straight to Windows from a Steam launcher entry (dual-boot).
@@ -325,9 +310,6 @@ install_system_extras() {
         ujust setup-virtualization virt-on || echo "WARN: virtualization failed (run 'ujust setup-virtualization')"
         # Add the user to the 'input' group for controller drivers.
         ujust add-user-to-input-group add || echo "WARN: input group failed (run 'ujust add-user-to-input-group add')"
-        # CoolerControl fan/pump curves — LAYERS rpm packages (liquidctl,
-        # coolercontrol) and needs a reboot. The deliberate extra rpm exception.
-        ujust install-coolercontrol install || echo "WARN: CoolerControl failed (run 'ujust install-coolercontrol')"
     else
         echo "WARN: ujust not found; skipping ujust-based system extras"
     fi
@@ -343,6 +325,51 @@ install_system_extras() {
     else
         echo "WARN: Homebrew not found; skipping LM Studio + VSCodium"
     fi
+}
+
+# Host shell: zsh from Homebrew (never rpm-ostree; Bazzite ships Homebrew).
+# There is no chsh on this image, so the login shell is changed with usermod.
+install_host_zsh() {
+    step "bazzite: host zsh"
+    local brew_bin
+    brew_bin="$(command -v brew 2>/dev/null || true)"
+    [ -n "$brew_bin" ] || brew_bin="/home/linuxbrew/.linuxbrew/bin/brew"
+    if [ ! -x "$brew_bin" ]; then
+        echo "WARN: Homebrew not found at ${brew_bin} (Bazzite ships it)."
+        echo "      Install/repair Homebrew (via ujust) and re-run; skipping host zsh."
+        return 0
+    fi
+
+    # Put brew on PATH for this process (it is not in a plain login shell's PATH).
+    eval "$("$brew_bin" shellenv)" || true
+
+    if brew list zsh >/dev/null 2>&1; then
+        echo "zsh already installed via Homebrew."
+    else
+        brew install zsh || { echo "WARN: 'brew install zsh' failed"; return 0; }
+    fi
+
+    local zsh_path
+    zsh_path="$(brew --prefix)/bin/zsh"
+    if [ ! -x "$zsh_path" ]; then
+        echo "WARN: zsh not found at ${zsh_path}; not changing the login shell."
+        return 0
+    fi
+
+    # PAM/login only accept shells listed in /etc/shells.
+    if ! grep -qxF "$zsh_path" /etc/shells 2>/dev/null; then
+        echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null \
+            && echo "Added ${zsh_path} to /etc/shells."
+    fi
+
+    if command -v chsh >/dev/null 2>&1; then
+        sudo chsh -s "$zsh_path" "$(id -un)" \
+            || echo "WARN: 'chsh -s ${zsh_path}' failed"
+    else
+        sudo usermod -s "$zsh_path" "$(id -un)" \
+            || echo "WARN: 'usermod -s ${zsh_path}' failed"
+    fi
+    echo "Host login shell is now ${zsh_path} (takes effect on next login)."
 }
 
 # Verify the podman-docker shim (baked into the custom image) so `docker` works.
@@ -370,119 +397,14 @@ create_container() {
     fi
 }
 
-# Provision the toolchain inside the container.
+# Provision the container by running the regular fresh_install.sh inside it with
+# the dotfiles-only profile. The container reuses the exact same OOP app
+# framework as every other host (no bespoke provisioning script), and because a
+# Distrobox shares $HOME the symlinks it writes are the host's too.
 provision_container() {
-    step "bazzite: distrobox provision"
-    if [ ! -f "$CONTAINER_PROVISION" ]; then
-        echo "WARN: $CONTAINER_PROVISION missing; skipping in-container provisioning."
-        return 0
-    fi
-    distrobox enter "$CONTAINER_NAME" -- bash "$CONTAINER_PROVISION"
-}
-
-# Host-side desktop tweaks applied on the Bazzite HOST (not in the Distrobox:
-# the container shares $HOME but not the host D-Bus/dconf session, so gsettings
-# run there would not reach the host GNOME session). Each entry is a full
-# command line; append more lines to add tweaks without touching the runner.
-# Run before the container is created/configured, so it happens while the
-# script is still firmly in the host shell.
-HOST_CONFIG_CMDS=(
-    "gsettings set org.gnome.desktop.wm.preferences focus-new-windows 'smart'"
-    "gsettings set org.gnome.desktop.wm.preferences auto-raise true"
-)
-
-# Run each HOST_CONFIG_CMDS entry, fail-soft (one bad command never aborts the
-# run) and report what happened.
-apply_host_config() {
-    step "bazzite: host config"
-    [ "${#HOST_CONFIG_CMDS[@]}" -eq 0 ] && return 0
-
-    local cmd
-    for cmd in "${HOST_CONFIG_CMDS[@]}"; do
-        echo "host config: $cmd"
-        if eval "$cmd" 2>&1; then
-            :
-        else
-            echo "WARN: host config command failed: $cmd"
-        fi
-    done
-}
-
-# Make the container the default terminal via Ptyxis's profile "Use Custom
-# Command" (Bazzite's documented shell-swap pattern). The custom command is the
-# full `distrobox enter <box> -- zsh -l`, with default-container left at the
-# host ("session"/"My Computer").
-#
-# IMPORTANT (Bazzite docs + bazzite#3283): setting default-container to a
-# distrobox AND using a custom command to force a shell do NOT combine — the
-# distrobox agent reads the host's SHELL (bash) and ignores the custom shell, so
-# terminals land in bash. The working approach is: host container + full
-# `distrobox enter ... -- zsh -l` in the custom command.
-#
-# This also replaces an older approach that appended an `exec distrobox enter
-# ...` block to ~/.bashrc; that block is removed here so existing installs
-# migrate. Switching terminals remains the `dbt` fzf menu (dotfiles/zsh/config.zsh).
-set_default_terminal() {
-    step "bazzite: default terminal"
-
-    # --- 1. Migrate: strip the old ~/.bashrc auto-entry block, if present. ---
-    local rc="$HOME/.bashrc"
-    local begin="# >>> bazzite distrobox terminal >>>"
-    local end="# <<< bazzite distrobox terminal <<<"
-    if [ -f "$rc" ] && grep -qF "$begin" "$rc"; then
-        awk -v b="$begin" -v e="$end" '
-            $0 == b { skip = 1; next }
-            $0 == e { skip = 0; next }
-            !skip   { print }
-        ' "$rc" > "${rc}.tmp" && mv "${rc}.tmp" "$rc"
-        echo "Removed old distrobox-terminal block from $rc (Ptyxis handles it now)."
-    fi
-    # Drop the sentinel toggled by the old db-off/db-on-style hooks.
-    rm -f "$HOME/.no-distrobox"
-
-    # --- 2. Configure Ptyxis's default profile (host + custom command). ---
-    # These settings live on the HOST (dconf), so route through the host when the
-    # script is running inside a Distrobox; otherwise apply directly.
-    local run_on_host
-    if command -v dconf >/dev/null 2>&1; then
-        run_on_host() { "$@"; }
-    elif command -v host-spawn >/dev/null 2>&1; then
-        run_on_host() { host-spawn "$@"; }
-    else
-        echo "WARN: no dconf/host-spawn; cannot configure Ptyxis default profile."
-        echo "      Manually: Ptyxis Preferences -> Profile -> Use Custom Command = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'"
-        return 0
-    fi
-
-    # New Ptyxis (>= 46) stores profile settings under /org/gnome/Ptyxis/Profiles/
-    # keyed by UUID; query the default profile UUID rather than hard-coding it.
-    local profile_uuid
-    profile_uuid="$(run_on_host dconf read /org/gnome/Ptyxis/default-profile-uuid 2>/dev/null \
-        | tr -d \"\' \ 2>/dev/null || true)"
-    # Strip the single-quotes dconf uses for string values.
-    profile_uuid="$(printf '%s' "$profile_uuid" | sed "s/^'//; s/'$//")"
-
-    if [ -z "$profile_uuid" ]; then
-        echo "WARN: could not determine Ptyxis default profile; not configuring it."
-        echo "      Manually: Ptyxis Preferences -> Profile -> Use Custom Command = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'"
-        return 0
-    fi
-
-    # Configure a "session" profile that runs the container via a custom command
-    # (see the function docstring above for why default-container stays "session").
-    local ok=1
-    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/default-container" "'session'" 2>/dev/null || ok=0
-    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/use-custom-command" "true" 2>/dev/null || ok=0
-    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/custom-command" "'distrobox enter ${CONTAINER_NAME} -- zsh -l'" 2>/dev/null || ok=0
-    run_on_host dconf write "/org/gnome/Ptyxis/Profiles/${profile_uuid}/login-shell" "false" 2>/dev/null || ok=0
-
-    if [ "$ok" -eq 1 ]; then
-        echo "Set Ptyxis default profile '${profile_uuid}' to enter ${CONTAINER_NAME} (zsh -l)."
-        echo "New terminals will open in the ${CONTAINER_NAME} container (run 'dbt' to switch)."
-    else
-        echo "WARN: failed to fully configure the Ptyxis profile. Set it manually:"
-        echo "      Ptyxis Preferences -> Profile -> 'Use Custom Command' = 'distrobox enter ${CONTAINER_NAME} -- zsh -l'."
-    fi
+    step "bazzite: container provision (fresh_install.sh --profile dotfiles)"
+    distrobox enter "$CONTAINER_NAME" -- \
+        bash "$SCRIPT_DIR/fresh_install.sh" --profile dotfiles --yes
 }
 
 # ---------- Flow ----------
@@ -500,7 +422,6 @@ done
 
 echo "Bazzite bootstrap"
 echo "  container: ${CONTAINER_NAME}"
-echo "  flatpaks:  ${DESKTOP_FLATPAKS[*]}"
 echo "  appimages: ${APPIMAGE_APPS[*]}"
 echo "  decky:     ${DECKY_PLUGINS[*]}"
 read -rp "Do you want to continue? (y/n): " confirm
@@ -509,24 +430,25 @@ if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
     exit 1
 fi
 
-# Host-side desktop tweaks first: they must run on the host (not in the
-# container) and before distrobox is configured.
-apply_host_config
-install_flatpaks
 install_appimages
 install_podman_docker
+install_host_zsh
+grant_flameshot_portal
 if [[ "$GAMING_EXTRAS" == "yes" ]]; then
     install_gaming_extras
     install_decky_plugins
 fi
 [[ "$SYSTEM_EXTRAS" == "yes" ]] && install_system_extras
 create_container
+# Container provisioning also symlinks the dotfiles (shared $HOME), so there is
+# no separate host-side dotfile_config step.
 provision_container
-set_default_terminal
-
-step "bazzite: dotfiles"
-dotfile_config
 
 # Success: remove temp dir (including backups).
 rm -rf "$TEMP_DIR"
-echo "Done! New terminals open in the ${CONTAINER_NAME} container (run 'dbt' to switch to the host shell or another box)."
+echo "Done! Enter the toolchain with 'distrobox enter ${CONTAINER_NAME}' (or run 'box')."
+if rpm-ostree status 2>/dev/null | grep -q 'ghcr.io/margeyshah/bazzite'; then
+    echo ""
+    echo "NOTE: CoolerControl (liquidctl + coolercontrol) ships in the image as an"
+    echo "      rpm-ostree layer. Reboot to activate it:  systemctl reboot"
+fi

@@ -18,7 +18,10 @@ command -v starship >/dev/null 2>&1 && eval "$(starship init zsh)"
 # Kept in ~/.local/share/zinit/snippets/ -> symlinked to ~/.scripts/dotfiles/zsh/
 zinit snippet "$HOME/.local/share/zinit/snippets/env.zsh"
 zinit snippet "$HOME/.local/share/zinit/snippets/init_apps.zsh"
+zinit snippet "$HOME/.local/share/zinit/snippets/aliases.zsh"
 zinit snippet "$HOME/.local/share/zinit/snippets/config.zsh"
+zinit snippet "$HOME/.local/share/zinit/snippets/server.zsh"
+zinit snippet "$HOME/.local/share/zinit/snippets/wsl.zsh"
 
 # ---------- Completion ----------
 autoload -Uz compinit

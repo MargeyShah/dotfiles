@@ -42,12 +42,13 @@ is_linuxlike() {
     is_env linux || is_env wsl
 }
 
-# is_linux_desktop — true if the current host is in the Linux desktop list.
-# (is_env linux has an "any Linux" fallback for unlisted hosts, so it is not
-# strict enough for per-host gating; this tests the explicit list only.)
+# is_linux_desktop — true on a Linux desktop host (HOSTS_LINUX minus the
+# servers). (is_env linux has an "any Linux" fallback for unlisted hosts, so it
+# is not strict enough for per-host gating; this tests the explicit list only.)
 is_linux_desktop() {
     local h="${HOST:-$(hostname)}"
-    [[ " ${HOSTS_LINUX[@]} " == *" $h "* ]]
+    [[ " ${HOSTS_LINUX[@]} " == *" $h "* ]] \
+        && [[ " ${HOSTS_SERVER[@]} " != *" $h "* ]]
 }
 
 # is_server — true on a server host, and inside a Distrobox container.

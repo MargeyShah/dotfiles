@@ -11,9 +11,10 @@ cd ~/.scripts/setup
 ./fresh_install.sh   # 1 server, 2 Unix PC (Linux desktop), 3 disney (Mac work), 4 dotfiles only
 ```
 
-Option 4 (`--profile dotfiles`) installs the shared dependency set and symlinks
-the dotfiles, without the desktop/server extras. It is the profile the Bazzite
-Distrobox is provisioned with.
+`fresh_install.sh` is the **single entrypoint for every host**. It detects the OS
+family (`mac`, `wsl`, `ubuntu`, `bazzite`) and runs the matching flow; there is
+no separate Bazzite script. Option 4 (`--profile dotfiles`) installs the shared
+dependency set and symlinks the dotfiles, without the desktop/server extras.
 
 `nvimup` will update nvim configs from the https://github.com/joermo/dotfiles remote
 
@@ -30,14 +31,21 @@ layout) stays at starship's defaults.
 `dotfiles/zsh/env.zsh` holds the hostname lists (`HOSTS_WSL`, `HOSTS_LINUX`,
 `HOSTS_MAC`) and the `is_env` / `is_linux_desktop` / `is_server` / `is_work_mac`
 helpers. Per-host settings are gated on those lists rather than on the physical
-OS, e.g. the LM Studio `lms` PATH entry in `dotfiles/zsh/config.zsh` only applies
-on `HOSTS_LINUX` hosts.
+OS, e.g. the LM Studio `lms` PATH entry in `dotfiles/zsh/init_apps.zsh` only
+applies on `HOSTS_LINUX` hosts.
+
+The zsh snippets are loaded in order by `.zshrc`:
+`env.zsh` (host identity) → `init_apps.zsh` (PATH/app runtime) →
+`aliases.zsh` (aliases + keybindings) → `config.zsh` (interactive helpers such
+as `box`, `q`) → `server.zsh` (`is_server`-gated docker-compose helpers) →
+`wsl.zsh` (WSL-only).
 
 ## Bazzite
 
-Bazzite is image-based (rpm-ostree), so `fresh_install.sh` is **not** run on the
-host (it refuses to). Instead the bootstrap below creates an Ubuntu Distrobox and
-runs `fresh_install.sh --profile dotfiles` *inside* it. Steps:
+Bazzite is image-based (rpm-ostree), so the host is never apt-managed. The same
+`fresh_install.sh` handles it: on Bazzite it does the per-user host work, creates
+an Ubuntu Distrobox, and runs itself **inside** that container with the chosen
+profile. Steps:
 
 1. **Custom image** — `github.com/MargeyShah/bazzite` builds flatpak-first
    Bazzite images (gnome / gnome-nvidia-open / deck-gnome / deck-nvidia-gnome).
@@ -45,28 +53,41 @@ runs `fresh_install.sh --profile dotfiles` *inside* it. Steps:
 2. **Bootstrap** — on the host, run:
 
    ```
-   ~/.scripts/setup/fresh_install_bazzite.sh
+   ~/.scripts/setup/fresh_install.sh
    ```
+
+   The menu shows two Bazzite options:
+
+   - **Unix PC (desktop)** — host extras (AppImages, gaming/Decky, system extras)
+     plus the container provisioned with `--profile desktop`.
+   - **dotfiles only** — host core work plus the container provisioned with
+     `--profile dotfiles`.
+
+   Either way the host work is: verify `podman-docker`, install **zsh** via
+   Homebrew and set it as the login shell (`usermod -s`; there is no `chsh`), and
+   grant **Flameshot** the screenshot portal permission (per-user, so it cannot
+   be baked into the image).
 
    The **GUI apps are baked into the image** (`default-flatpaks` in the
    MargeyShah/bazzite recipes: Element, VS Code, Signal, Plexamp, Hidamari,
    osu!, Ludusavi, Heroic, Gear Lever, Flameshot, Proton Plus, Sunshine, Prism
    Launcher, Cemu, RPCS3, Dolphin, XIVLauncher), so the bootstrap does not
-   re-install them. It only:
+   re-install them. The Unix PC tier additionally:
 
    - installs **Helium**, **Sidra**, **Ghostty** and **Vesktop** as AppImages in
      `~/AppImages` via Gear Lever (none has a suitable Flathub package; Gear
      Lever is the recommended way to manage AppImages). Download and integration
      are checked independently, so a re-run only does the missing step,
-   - grants **Flameshot** the screenshot portal permission
-     (`flatpak permission-set screenshot screenshot org.flameshot.Flameshot yes`;
-     per-user, so it cannot be baked into the image),
-   - installs **zsh** on the host with Homebrew (never rpm-ostree) and makes it
-     the login shell via `usermod -s` (there is no `chsh` on Bazzite),
-   - creates the **Ubuntu Distrobox** and provisions it by running
-     `setup/fresh_install.sh --profile dotfiles` inside it — the same script and
-     app list as any other host, no Bazzite-specific copy. As a Distrobox
-     shares `$HOME`, that also symlinks the dotfiles for the host.
+   - creates the **Ubuntu Distrobox** and provisions it by re-running
+     `setup/fresh_install.sh --profile desktop` inside it — the same script and
+     app list as any other host, no Bazzite-specific copy. Inside the box the
+     host-only GUI apps (`element`, `vscode`; see `GUI_APPS` in `lib.sh`) are
+     skipped, so the container gets the apt **CLI toolchain** (`rsync`,
+     `neofetch`, adb, kubectl, ...) without duplicating the image's Flatpaks. As
+     a Distrobox shares `$HOME`, that also symlinks the dotfiles for the host.
+
+   The dotfiles-only tier provisions the same container with `--profile
+   dotfiles` instead (toolchain + dotfiles, no host extras).
 
    `podman-docker` (baked into the image) provides the `docker` CLI against
    Podman; there is no Docker daemon.
@@ -123,16 +144,17 @@ runs `fresh_install.sh --profile dotfiles` *inside* it. Steps:
    (use the `javascript` branch for GNOME 45–50, `main` for GNOME 50+), then run
    `make install` and enable it in the Extensions app.
 
-`setup/lib.sh` holds the shared helpers, app framework, and `dotfile_setup()`
-used by both `fresh_install.sh` and `fresh_install_bazzite.sh`. Its idempotency
-checks (`appimage_downloaded`, `appimage_integrated`, `ujust_installed`,
-`decky_plugin_installed`) let either script skip work that is already done —
-`appimage_integrated` asks Gear Lever itself (`--list-installed --json`) rather
-than guessing from filenames.
+`setup/lib.sh` holds everything shared: constants, OS/identity detection, the
+idempotency checks, the app framework, profiles, the dotfiles routines, the
+Bazzite host steps, and the menu. `fresh_install.sh` is just arguments, guards,
+and the `FAMILY` dispatch. The idempotency checks (`appimage_downloaded`,
+`appimage_integrated`, `ujust_installed`, `decky_plugin_installed`) let a re-run
+skip work that is already done — `appimage_integrated` asks Gear Lever itself
+(`--list-installed --json`) rather than guessing from filenames.
 
 ## SSH & commit signing
 
-Every install (both scripts) runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
+Every install runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
 if absent and configures git to **sign commits with SSH** (`gpg.format=ssh`,
 `commit.gpgsign=true`) so they show as *Verified*.
 

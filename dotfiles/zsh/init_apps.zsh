@@ -8,6 +8,13 @@ export PATH=$PATH:/usr/local/go/bin
 
 # NVM is lazy-loaded from .zshrc (load-nvm)
 
+# ---------- LM Studio (lms) ----------
+# `lms` lives in ~/.lmstudio/bin. Linux desktop hosts only (mac/wsl/servers
+# don't have it).
+if is_linux_desktop; then
+    export PATH="$PATH:$HOME/.lmstudio/bin"
+fi
+
 # ---------- Mac ----------
 if is_env mac; then
     # Brew Setup

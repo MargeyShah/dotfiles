@@ -1,11 +1,16 @@
 # shellcheck shell=bash
 # Shared library for the fresh-install scripts.
 #
-# Holds the OS detection, helper functions, the OOP app framework (app_<name>
-# objects + profiles), the dotfile_setup() config routine, and the snap
-# removal. Sourced by both fresh_install.sh (mac/wsl/ubuntu) and
-# fresh_install_bazzite.sh (Bazzite/ostree). Sourcing applies the shell
-# options and ERR trap below, so callers should not redefine them.
+# Sourced by fresh_install.sh. Sourcing applies the shell options and ERR trap
+# below, so callers should not redefine them.
+#
+# Layout is grouped by function TYPE. Keep new helpers in the matching section:
+#   1. constants                 2. OS/identity detection
+#   3. failure tracking          4. generic shell helpers
+#   5. idempotency checks        6. package-manager primitives
+#   7. app objects               8. profiles
+#   9. dotfiles                 10. snap removal
+#  11. Bazzite host steps       12. menu
 #
 # Family values: mac | ubuntu (wsl normalizes to ubuntu) | bazzite
 set -o pipefail
@@ -13,19 +18,70 @@ set -eE
 # Unmatched globs expand to nothing instead of a literal `*`.
 shopt -s nullglob
 
+# ---------- 1. Constants ----------
+
 PYENV_VERSION=3.14.7
 KUBECTL_VERSION=v1.37
 
 NVIM_HANDROLL_REPO="https://github.com/joermo/dotfiles"
 NVIM_HANDROLL_SRC="${HOME}/.local/share/nvim-handroll"
 
-# ---------- Variables ----------
 PROJECT_DIR="${HOME}/.scripts"
 TEMP_DIR="${HOME}/install"
 BACKUP_DIR="${TEMP_DIR}/backup"
 STEP_LOG="${TEMP_DIR}/steps.log"
 
-# ---------- OS detection ----------
+# Own-machine SSH key distribution (see app_ssh).
+PISTACHIO_HOST="pistachio"
+PISTACHIO_IP="192.168.0.2"
+PISTACHIO_USER="margey"
+
+# Bazzite: the Ubuntu Distrobox that holds the apt CLI toolchain.
+CONTAINER_NAME="bazzite-ubuntu"
+
+# Host-only GUI apps. They are installed on a normal host, but skipped inside a
+# Distrobox: there they would duplicate the host's GUIs (on Bazzite the same
+# apps are baked into the image as Flatpaks). Everything else in a profile
+# still runs in the box, so --profile desktop inside the Distrobox means "all
+# the apt CLI tools" without duplicate GUI apps.
+GUI_APPS="element vscode"
+
+# Bazzite AppImages (no suitable Flathub package) integrated via Gear Lever.
+# Format: "owner/repo|display-name|asset-filename-regex".
+# (Playnite is intentionally absent: there is no Linux build.)
+APPIMAGE_APPS=(
+    "imputnet/helium-linux|Helium|helium-.*-x86_64\.AppImage$"
+    "wimpysworld/sidra|Sidra|Sidra-linux-x86_64\.AppImage$"
+    "pkgforge-dev/ghostty-appimage|Ghostty|Ghostty-.*-x86_64\.AppImage$"
+    # Vesktop's x86_64 asset has no arch suffix (arm64 does: -arm64.AppImage).
+    "Vencord/Vesktop|Vesktop|Vesktop-[0-9.]+\.AppImage$"
+)
+
+# Decky Loader plugins to install from the Decky store (deckbrew), by store
+# display name. Installed into ~/homebrew/plugins by verifying + extracting the
+# store zip; no config is synced between machines.
+DECKY_PLUGINS=(
+    "CSS Loader"
+    "SteamGridDB"
+    "ProtonDB Badges"
+    "HLTB for Deck"
+    "TabMaster"
+    "PlayCount"
+    "IsThereAnyDeal for Deck"
+    "Decky LSFG-VK"
+    "AutoFlatpaks"
+    "Decky Terminal"
+    "Audio Loader"
+    "Game Theme Music"
+    "Quick Launch"
+    "Volume Mixer"
+    "EmuDecky"
+    "MusicControl"
+)
+DECKY_STORE_URL="https://plugins.deckbrew.xyz/plugins"
+DECKY_ARTIFACT_URL="https://cdn.tzatzikiweeb.moe/file/steam-deck-homebrew/versions"
+
+# ---------- 2. OS/identity detection ----------
 detect_os() {
     if [[ "$(uname)" == "Darwin" ]]; then
         echo "mac"
@@ -46,7 +102,77 @@ OS="$(detect_os)"
 FAMILY="$OS"
 [[ "$FAMILY" == "wsl" ]] && FAMILY="ubuntu"
 
-# ---------- Helpers ----------
+# True when running inside a Distrobox (distrobox-init exports $CONTAINER_ID,
+# which needs no binary, so this is safe on hosts without distrobox).
+is_distrobox() {
+    [ -n "${CONTAINER_ID:-}" ]
+}
+
+# Source dotfiles/zsh/env.zsh once. It is the single source of truth for the
+# HOSTS_* lists and the is_* predicates used by the dotfiles.
+load_host_lists() {
+    [ -n "${__HOST_LISTS_LOADED:-}" ] && return 0
+    [ -f "$PROJECT_DIR/dotfiles/zsh/env.zsh" ] || return 1
+    # shellcheck source=../dotfiles/zsh/env.zsh
+    source "$PROJECT_DIR/dotfiles/zsh/env.zsh"
+    __HOST_LISTS_LOADED=yes
+}
+
+# in_host_list <host> <entry...> — case-insensitive membership test.
+in_host_list() {
+    local h="$1"; shift
+    local entry
+    shopt -s nocasematch
+    for entry in "$@"; do
+        if [ "$entry" = "$h" ]; then shopt -u nocasematch; return 0; fi
+    done
+    shopt -u nocasematch
+    return 1
+}
+
+# True if this host appears in any OS-class list (i.e. one of our machines).
+is_known_host() {
+    load_host_lists || return 1
+    in_host_list "${HOST:-$(hostname)}" \
+        "${HOSTS_WSL[@]}" "${HOSTS_LINUX[@]}" "${HOSTS_MAC[@]}"
+}
+
+# True if this is a Linux desktop host. Delegates to env.zsh's
+# is_linux_desktop() so the host-list logic has a single definition.
+is_linux_desktop_host() {
+    load_host_lists || return 1
+    is_linux_desktop
+}
+
+# ---------- 3. Granular failure tracking ----------
+step() {
+    echo "$1" >> "$STEP_LOG"
+}
+
+backup_path() {
+    local p="$1"
+    if [ -e "$p" ]; then
+        mkdir -p "$BACKUP_DIR"
+        # Plain `cp` (built-in on every OS) so backups work before coreutils is
+        # installed on a fresh mac.
+        cp -R "$p" "$BACKUP_DIR/" 2>/dev/null || true
+    fi
+}
+
+on_fail() {
+    local failed_step
+    failed_step="$(tail -n 1 "$STEP_LOG" 2>/dev/null || echo "unknown")"
+    echo ""
+    echo "=============================================="
+    echo "INSTALL FAILED at step: ${failed_step}"
+    echo "Backups preserved in: ${BACKUP_DIR}"
+    echo "=============================================="
+    exit 1
+}
+trap 'on_fail' ERR
+
+# ---------- 4. Generic shell helpers ----------
+
 # Symlink src -> dst. ln -sfn replaces an existing symlink/file in place, so no
 # coreutils/gcp is needed and there is no `cp -s` directory-nesting weirdness.
 link() {
@@ -55,33 +181,40 @@ link() {
     ln -sfn "$src" "$dst"
 }
 
-# Pull the nvim-handroll config from joermo/dotfiles and symlink it to ~/.config/nvim.
-nvim_handroll() {
-    if [ ! -d "$NVIM_HANDROLL_SRC/.git" ]; then
-        rm -rf "$NVIM_HANDROLL_SRC"
-        git clone --depth 1 "$NVIM_HANDROLL_REPO" "$NVIM_HANDROLL_SRC"
-    else
-        # Fetch + hard reset instead of `git pull`: this is a shallow, read-only
-        # mirror of someone else's repo, and `git pull` aborts with "divergent
-        # branches" whenever the local shallow clone and origin have both moved
-        # (or a plugin bumped lazy-lock.json locally).
-        git -C "$NVIM_HANDROLL_SRC" fetch --depth 1 origin
-        git -C "$NVIM_HANDROLL_SRC" reset --hard origin/main
-        git -C "$NVIM_HANDROLL_SRC" clean -fdq
-    fi
-    mkdir -p "$HOME/.config"
-    rm -rf "$HOME/.config/nvim"
-    ln -sfn "$NVIM_HANDROLL_SRC/nvim-handroll" "$HOME/.config/nvim"
+# Normalize whitespace and check if a line exists on stdin. 0=present, 1=absent.
+line_present() {
+    local line="$1" norm
+    norm="$(printf '%s' "$line" | awk '{ $1=$1; print }')"
+    awk -v n="$norm" '{ $1=$1; if ($0==n) f=1 } END{ exit f?0:1 }'
 }
+
+# Append a line to a root-owned file only if it isn't already present.
+append_if_missing() {
+    local line="$1" file="$2"
+    [ -n "$line" ] || return
+    if ! line_present "$line" < <(sudo cat "$file" 2>/dev/null); then
+        echo "$line" | sudo tee -a "$file" >/dev/null
+    fi
+}
+
+# ---------- 5. Idempotency checks ----------
+# Each check answers "is this step already done?" so a re-run can skip only the
+# work that is actually missing (download vs. integrate vs. install target).
 
 # Generic "is this app installed" check (by command name).
 pkg_exists() {
     command -v "$1" >/dev/null 2>&1
 }
 
-# ---------- Idempotency checks (shared by both install scripts) ----------
-# Each check answers "is this step already done?" so a re-run can skip only the
-# work that is actually missing (download vs. integrate vs. install target).
+# Manager-aware existence check. Uses the RESOLVED package name (not the binary),
+# so e.g. apt's "fd-find" is checked via dpkg, not `command -v fd`.
+installed_by() {
+    case "$1" in
+        apt)   dpkg -s "$2" >/dev/null 2>&1 ;;
+        brew)  brew list "$2" >/dev/null 2>&1 ;;
+        cargo) command -v "$2" >/dev/null 2>&1 ;;
+    esac
+}
 
 # True if an AppImage file is already on disk (and executable-suitable).
 appimage_downloaded() {
@@ -140,88 +273,7 @@ sys.exit(1)
 PY
 }
 
-# ---------- Granular failure tracking ----------
-step() {
-    echo "$1" >> "$STEP_LOG"
-}
-
-backup_path() {
-    local p="$1"
-    if [ -e "$p" ]; then
-        mkdir -p "$BACKUP_DIR"
-        # Plain `cp` (built-in on every OS) so backups work before coreutils is
-        # installed on a fresh mac.
-        cp -R "$p" "$BACKUP_DIR/" 2>/dev/null || true
-    fi
-}
-
-on_fail() {
-    local failed_step
-    failed_step="$(tail -n 1 "$STEP_LOG" 2>/dev/null || echo "unknown")"
-    echo ""
-    echo "=============================================="
-    echo "INSTALL FAILED at step: ${failed_step}"
-    echo "Backups preserved in: ${BACKUP_DIR}"
-    echo "=============================================="
-    exit 1
-}
-trap 'on_fail' ERR
-
-# Normalize whitespace and check if a line exists on stdin. 0=present, 1=absent.
-line_present() {
-    local line="$1" norm
-    norm="$(printf '%s' "$line" | awk '{ $1=$1; print }')"
-    awk -v n="$norm" '{ $1=$1; if ($0==n) f=1 } END{ exit f?0:1 }'
-}
-
-# Append a line to a root-owned file only if it isn't already present.
-append_if_missing() {
-    local line="$1" file="$2"
-    [ -n "$line" ] || return
-    if ! line_present "$line" < <(sudo cat "$file" 2>/dev/null); then
-        echo "$line" | sudo tee -a "$file" >/dev/null
-    fi
-}
-
-# Sync system config (fstab + crontabs) from the repo, deduping existing lines.
-sync_system_config() {
-    step "system: fstab"
-    while IFS= read -r line; do
-        append_if_missing "$line" /etc/fstab
-    done < "$PROJECT_DIR/setup/etc/fstab"
-
-    step "system: crontab (root)"
-    local root_file
-    root_file="$(sudo crontab -l -u root 2>/dev/null || true)"
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        line_present "$line" <<<"$root_file" || root_file+=$'\n'"$line"
-    done < "$PROJECT_DIR/setup/cron/root"
-    printf '%s\n' "$root_file" | sudo crontab -u root -
-
-    step "system: crontab (margey)"
-    local cur_user
-    cur_user="$(id -un)"
-    local user_file
-    user_file="$(sudo crontab -l -u "$cur_user" 2>/dev/null || true)"
-    while IFS= read -r line; do
-        [ -n "$line" ] || continue
-        line_present "$line" <<<"$user_file" || user_file+=$'\n'"$line"
-    done < "$PROJECT_DIR/setup/cron/margey"
-    printf '%s\n' "$user_file" | sudo crontab -u "$cur_user" -
-}
-
-# ---------- OOP install framework ----------
-
-# Manager-aware existence check. Uses the RESOLVED package name (not the binary),
-# so e.g. apt's "fd-find" is checked via dpkg, not `command -v fd`.
-installed_by() {
-    case "$1" in
-        apt)   dpkg -s "$2" >/dev/null 2>&1 ;;
-        brew)  brew list "$2" >/dev/null 2>&1 ;;
-        cargo) command -v "$2" >/dev/null 2>&1 ;;
-    esac
-}
+# ---------- 6. Package-manager primitives ----------
 
 # Repo/tap boilerplate — the "objects" scaffold, OS-branch ready.
 # apt_repo writes a deb822 .sources file (modern apt format).
@@ -246,6 +298,16 @@ brew_tap() {
     else
         brew tap "$1"
     fi
+}
+
+# Put Homebrew on PATH for this script process. Apple Silicon mac (/opt/homebrew)
+# and Linuxbrew; the installer only updates shell rc files, not this process.
+brew_shellenv() {
+    local b
+    for b in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
+        if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; return 0; fi
+    done
+    return 1
 }
 
 # Simple-app registry: logical name -> "manager:package" for the current FAMILY.
@@ -316,15 +378,21 @@ install_pkg() {
     esac
 }
 
-# Dispatcher: run each app function in order.
+# Dispatcher: run each app function in order. Host-only GUI apps are skipped
+# inside a Distrobox (see GUI_APPS); every other app runs wherever it is called.
 install_apps() {
     local label="$1"; shift
+    local app
     for app in "$@"; do
+        if is_distrobox && [[ " ${GUI_APPS} " == *" ${app} "* ]]; then
+            echo "skip ${app} (host GUI app; not installed inside a Distrobox)"
+            continue
+        fi
         "app_$app"
     done
 }
 
-# ---------- App objects ----------
+# ---------- 7. App objects ----------
 
 # --- Simple registry wrappers (option A: explicit) ---
 app_duf()      { step "duf";      install_pkg duf; }
@@ -361,16 +429,6 @@ app_zinit() {
         mkdir -p "$HOME/.local/share/zinit"
         git clone https://github.com/zdharma-continuum/zinit "$HOME/.local/share/zinit/zinit.git"
     fi
-}
-
-# Put Homebrew on PATH for this script process. Apple Silicon mac (/opt/homebrew)
-# and Linuxbrew; the installer only updates shell rc files, not this process.
-brew_shellenv() {
-    local b
-    for b in /opt/homebrew/bin/brew /usr/local/bin/brew /home/linuxbrew/.linuxbrew/bin/brew; do
-        if [[ -x "$b" ]]; then eval "$("$b" shellenv)"; return 0; fi
-    done
-    return 1
 }
 
 app_brew() {
@@ -545,6 +603,8 @@ app_nerd_fonts() {
 }
 
 # --- Repo apps (ubuntu-only for now; OOP-ready for future OS) ---
+# element and vscode are host GUI apps (see GUI_APPS): install_desktop skips
+# them inside a Distrobox.
 
 app_element() {
     step "element-desktop"
@@ -757,10 +817,6 @@ app_cron() {
 # hosts (see dotfiles/zsh/env.zsh), and gh is never auto-authenticated.
 # OS-agnostic (runs on the host for apt/brew and inside the Bazzite Distrobox,
 # which shares $HOME), so the key and git config apply everywhere at once.
-PISTACHIO_HOST="pistachio"
-PISTACHIO_IP="192.168.0.2"
-PISTACHIO_USER="margey"
-
 app_ssh() {
     step "ssh key + git signing"
     local key="$HOME/.ssh/id_ed25519"
@@ -786,16 +842,7 @@ app_ssh() {
     # its key anywhere. The hostname lists live in dotfiles/zsh/env.zsh (single
     # source of truth); unknown hosts are skipped. gh is never auto-authed.
     local h="${HOST:-$(hostname)}" known_host="no"
-    # shellcheck source=../dotfiles/zsh/env.zsh
-    if [ -f "$PROJECT_DIR/dotfiles/zsh/env.zsh" ]; then
-        source "$PROJECT_DIR/dotfiles/zsh/env.zsh"
-        shopt -s nocasematch
-        local list
-        for list in "${HOSTS_WSL[@]}" "${HOSTS_LINUX[@]}" "${HOSTS_MAC[@]}"; do
-            if [[ "$list" == "$h" ]]; then known_host="yes"; break; fi
-        done
-        shopt -u nocasematch
-    fi
+    if is_known_host; then known_host="yes"; fi
 
     trap - ERR
     if [ "$known_host" = "yes" ]; then
@@ -848,7 +895,7 @@ app_kitty() {
     curl -L https://sw.kovidgoyal.net/kitty/installer.sh | sh /dev/stdin
 }
 
-# ---------- Profiles (ordered app lists) ----------
+# ---------- 8. Profiles (ordered app lists) ----------
 
 # Shared dependency set for every profile, including dotfiles-only. Ordered so
 # brew runs first (it provides git on a fresh mac), then everything the
@@ -887,7 +934,7 @@ install_desktop() {
 
 install_server() {
     install_apps server \
-        just sdkman vbox kubectl gh aws speedtest docker openssh cron
+        cron just sdkman vbox kubectl gh aws speedtest docker openssh
 }
 
 # Disney = work Mac profile. Only runs its apps when work-profiled.
@@ -897,11 +944,59 @@ install_disney() {
         poetry devx kitty
 }
 
-# ---------- Dotfiles ----------
+# ---------- 9. Dotfiles ----------
 
-# Config-only half of dotfile_setup(): backup/remove/symlink the dotfiles and,
-# for the server profile, sync system config. No package installs happen here,
-# so it is also safe to call on its own.
+# Pull the nvim-handroll config from joermo/dotfiles and symlink it to ~/.config/nvim.
+nvim_handroll() {
+    if [ ! -d "$NVIM_HANDROLL_SRC/.git" ]; then
+        rm -rf "$NVIM_HANDROLL_SRC"
+        git clone --depth 1 "$NVIM_HANDROLL_REPO" "$NVIM_HANDROLL_SRC"
+    else
+        # Fetch + hard reset instead of `git pull`: this is a shallow, read-only
+        # mirror of someone else's repo, and `git pull` aborts with "divergent
+        # branches" whenever the local shallow clone and origin have both moved
+        # (or a plugin bumped lazy-lock.json locally).
+        git -C "$NVIM_HANDROLL_SRC" fetch --depth 1 origin
+        git -C "$NVIM_HANDROLL_SRC" reset --hard origin/main
+        git -C "$NVIM_HANDROLL_SRC" clean -fdq
+    fi
+    mkdir -p "$HOME/.config"
+    rm -rf "$HOME/.config/nvim"
+    ln -sfn "$NVIM_HANDROLL_SRC/nvim-handroll" "$HOME/.config/nvim"
+}
+
+# Sync system config (fstab + crontabs) from the repo, deduping existing lines.
+sync_system_config() {
+    step "system: fstab"
+    while IFS= read -r line; do
+        append_if_missing "$line" /etc/fstab
+    done < "$PROJECT_DIR/setup/etc/fstab"
+
+    step "system: crontab (root)"
+    local root_file
+    root_file="$(sudo crontab -l -u root 2>/dev/null || true)"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        line_present "$line" <<<"$root_file" || root_file+=$'\n'"$line"
+    done < "$PROJECT_DIR/setup/cron/root"
+    printf '%s\n' "$root_file" | sudo crontab -u root -
+
+    step "system: crontab (margey)"
+    local cur_user
+    cur_user="$(id -un)"
+    local user_file
+    user_file="$(sudo crontab -l -u "$cur_user" 2>/dev/null || true)"
+    while IFS= read -r line; do
+        [ -n "$line" ] || continue
+        line_present "$line" <<<"$user_file" || user_file+=$'\n'"$line"
+    done < "$PROJECT_DIR/setup/cron/margey"
+    printf '%s\n' "$user_file" | sudo crontab -u "$cur_user" -
+}
+
+# Config-only half of dotfile_setup(): back up, remove and symlink the dotfiles.
+# No package installs happen here, so it is also safe to call on its own.
+# (System config — fstab/crontab — belongs to the install side: see app_cron,
+# which installs the cron package before calling sync_system_config.)
 dotfile_config() {
     if [ -d "$HOME/.oh-my-zsh" ]; then
         echo ""
@@ -920,15 +1015,9 @@ dotfile_config() {
     # every pane inside the Distrobox. That only makes sense on Linux desktops:
     # servers never auto-start zellij, and box-shell is meaningless without
     # distrobox. Gate on the hostname lists (servers are excluded).
-    local want_zellij="no"
-    if [ -f "$PROJECT_DIR/dotfiles/zsh/env.zsh" ]; then
-        # shellcheck source=../dotfiles/zsh/env.zsh
-        source "$PROJECT_DIR/dotfiles/zsh/env.zsh"
-        local _host="${HOST:-$(hostname)}"
-        if [[ " ${HOSTS_LINUX[*]} " == *" ${_host} "* \
-           && " ${HOSTS_SERVER[*]} " != *" ${_host} "* ]]; then
-            want_zellij="yes"
-        fi
+    local want_zellij="no" _host="${HOST:-$(hostname)}"
+    if is_linux_desktop_host; then
+        want_zellij="yes"
     fi
 
     step "dotfiles: backup existing config"
@@ -980,11 +1069,6 @@ dotfile_config() {
         -exec rm -rf {} + 2>/dev/null || true
     link "$PROJECT_DIR/dotfiles/.zshrc" "$HOME/.zshrc"
     link "$PROJECT_DIR/dotfiles/ssh/config" "$HOME/.ssh/config"
-
-    if [[ "$PROFILE" == "server" ]]; then
-        step "dotfiles: system config (fstab + crontab)"
-        sync_system_config
-    fi
 }
 
 # Full dotfiles setup for a normal host: install the shared dependency set,
@@ -997,7 +1081,7 @@ dotfile_setup() {
     dotfile_config
 }
 
-# ---------- Snap removal (ubuntu only) ----------
+# ---------- 10. Snap removal (ubuntu only) ----------
 remove_snap() {
     step "snap: remove"
     # Nothing to do if snap isn't present; never abort the run over it.
@@ -1020,13 +1104,359 @@ remove_snap() {
     sudo rm -rf /snap /var/snap /var/lib/snapd /var/cache/snapd/ "$HOME/snap/"
 }
 
-# ---------- Menu ----------
+# ---------- 11. Bazzite host steps ----------
+# Bazzite is image-based (rpm-ostree) with a flatpak-first host and an Ubuntu
+# Distrobox for the apt CLI toolchain. Everything declarative (flatpaks, GNOME
+# extensions, gsettings) lives in the MargeyShah/bazzite image; these steps are
+# the per-user/post-install work that cannot be baked in.
+
+# Grant Flameshot the screenshot portal so its hotkey/portal path works.
+# This cannot live in the image: flatpak's permission store is per-user
+# (~/.local/share/flatpak/db/<table>, a GVariant DB), with no system-wide
+# equivalent, so it has to be written in the user's session.
+grant_flameshot_portal() {
+    step "bazzite: flameshot portal permission"
+    command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping Flameshot permission"; return 0; }
+    if ! flatpak info org.flameshot.Flameshot >/dev/null 2>&1; then
+        echo "WARN: Flameshot flatpak not installed; skipping portal permission"
+        return 0
+    fi
+    # No --user/--system flag exists for permission-set; the store is per-user.
+    flatpak permission-set screenshot screenshot org.flameshot.Flameshot yes \
+        || echo "WARN: could not grant Flameshot the screenshot portal"
+}
+
+# Resolve the download URL of the newest release asset matching a regex.
+# Returns an empty string (and status 0) when nothing matches, so the caller can
+# warn and skip instead of aborting under `set -o pipefail`.
+resolve_asset_url() {
+    local repo="$1" pattern="$2"
+    { curl -fsSL "https://api.github.com/repos/${repo}/releases/latest" 2>/dev/null \
+        | grep -oE '"browser_download_url": *"[^"]+"' \
+        | sed -E 's/.*"(https[^"]+)"/\1/' \
+        | grep -E "$pattern" \
+        | head -n1; } || true
+}
+
+# Apps without a Flathub package, installed as AppImages and integrated into the
+# app menu via Gear Lever (it.mijorus.gearlever).
+#
+# AppImages live in ~/AppImages (Gear Lever's own directory) and each step is
+# checked independently, so a re-run only does what is missing:
+#   * already integrated  -> nothing (Gear Lever's --list-installed status)
+#   * downloaded, not yet -> integrate only
+#   * neither             -> download, then integrate
+install_appimages() {
+    step "bazzite: appimages"
+    [ "${#APPIMAGE_APPS[@]}" -eq 0 ] && return 0
+    command -v flatpak >/dev/null 2>&1 || { echo "WARN: flatpak missing; skipping AppImages"; return 0; }
+
+    mkdir -p "$HOME/AppImages"
+    # Download + integrate from a staging dir. Gear Lever treats a byte-identical
+    # file already sitting in its own ~/AppImages as "already integrated" and
+    # then skips creating the .desktop entry, so files must be handed over from
+    # somewhere else.
+    local stage="$TEMP_DIR/appimages"
+    mkdir -p "$stage"
+
+    local entry repo name pattern url managed src
+    for entry in "${APPIMAGE_APPS[@]}"; do
+        IFS='|' read -r repo name pattern <<<"$entry"
+        managed="$HOME/AppImages/${name,,}.appimage"
+        src="$stage/${name}.AppImage"
+
+        if appimage_integrated "$name"; then
+            echo "AppImage already integrated: $name"
+            continue
+        fi
+
+        # Step 1: obtain the file (staged, or moved out of Gear Lever's dir).
+        if ! appimage_downloaded "$src"; then
+            if appimage_downloaded "$managed"; then
+                mv "$managed" "$src"
+                echo "Re-integrating existing AppImage: $name"
+            else
+                url="$(resolve_asset_url "$repo" "$pattern")"
+                if [ -z "$url" ]; then
+                    echo "WARN: no AppImage asset matching '$pattern' in ${repo}; skipping $name"
+                    continue
+                fi
+                echo "Downloading $name from $url"
+                curl -fL "$url" -o "$src"
+                chmod +x "$src"
+            fi
+        fi
+
+        # Step 2: integrate into the app menu + update checks with Gear Lever.
+        # --yes avoids Gear Lever's interactive "integrate? (y/N)" prompt, which
+        # otherwise blocks (and appears to hang) the script.
+        if flatpak info it.mijorus.gearlever >/dev/null 2>&1; then
+            flatpak run it.mijorus.gearlever --integrate --yes "$src" 2>/dev/null \
+                || echo "WARN: Gear Lever could not integrate $name (open Gear Lever manually)"
+        else
+            echo "WARN: Gear Lever not installed; $name left unintegrated in $HOME/AppImages"
+        fi
+    done
+}
+
+# Gaming extras installed via Bazzite's own `ujust` targets (not flatpaks, not
+# baked into the image). Always installed: every Bazzite host this targets is a
+# gaming host. (Use --no-gaming to skip.)
+#   - EmuDeck  : `ujust get-emudeck install` (installs an AppImage + wizard)
+#   - Decky    : `ujust setup-decky install` (Decky Loader; used in Game Mode)
+#   - Bazzite Buddy : `ujust get-decky-bazzite-buddy install` (changelog plugin)
+# All are interactive-capable but expose a non-interactive action argument.
+install_gaming_extras() {
+    step "bazzite: gaming extras (emudeck, decky)"
+    command -v ujust >/dev/null 2>&1 || { echo "WARN: ujust not found; skipping EmuDeck/Decky"; return 0; }
+
+    # EmuDeck.
+    if ujust_installed get-emudeck; then
+        echo "EmuDeck already installed."
+    else
+        ujust get-emudeck install || echo "WARN: EmuDeck install failed (run 'ujust get-emudeck' manually)"
+    fi
+
+    # Decky Loader (status may be 'install' or 'install-prerelease').
+    if ujust_installed setup-decky; then
+        echo "Decky Loader already installed."
+    else
+        ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
+    fi
+
+    # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
+    # so installed via its own ujust recipe into ~/homebrew/plugins/Bazzite Buddy).
+    # It requires Decky Loader, so only install it once Decky is really present.
+    if ! ujust_installed setup-decky; then
+        echo "WARN: Decky Loader not installed; skipping Bazzite Buddy"
+    elif ujust_installed get-decky-bazzite-buddy; then
+        echo "Bazzite Buddy already installed."
+    else
+        ujust get-decky-bazzite-buddy install || echo "WARN: Bazzite Buddy install failed (run 'ujust get-decky-bazzite-buddy' manually)"
+    fi
+}
+
+# Install Decky plugins from the Decky store (deckbrew). Each plugin zip is
+# hash-verified (sha256 from the store index) and extracted into
+# ~/homebrew/plugins; a plugin's top-level folder is a slug (e.g. SDH-CssLoader),
+# so "already installed" is detected via the plugin.json "name" field
+# (decky_plugin_installed above).
+# Fail-soft: any single plugin failing never aborts the run. No config sync.
+install_decky_plugins() {
+    step "bazzite: decky plugins"
+    [ "${#DECKY_PLUGINS[@]}" -eq 0 ] && return 0
+    command -v python3 >/dev/null 2>&1 || { echo "WARN: python3 missing; skipping Decky plugins"; return 0; }
+    pkg_exists unzip || { echo "WARN: unzip missing; skipping Decky plugins"; return 0; }
+
+    local plugins_dir="$HOME/homebrew/plugins"
+    mkdir -p "$plugins_dir"
+
+    local store_json="$TEMP_DIR/decky-store.json"
+    if ! curl -fsSL "$DECKY_STORE_URL" -o "$store_json" || [ ! -s "$store_json" ]; then
+        echo "WARN: could not fetch Decky store; skipping plugin installs"
+        return 0
+    fi
+
+    local name hash zip got
+    for name in "${DECKY_PLUGINS[@]}"; do
+        if decky_plugin_installed "$name"; then
+            echo "Decky plugin already installed: $name"
+            continue
+        fi
+
+        hash="$(python3 -c 'import json,sys
+d=json.load(open(sys.argv[1]))
+print(next((p["versions"][0]["hash"] for p in d if p.get("name")==sys.argv[2]),""))' "$store_json" "$name" 2>/dev/null || true)"
+        if [ -z "$hash" ]; then
+            echo "WARN: '$name' not found in Decky store; skipping"
+            continue
+        fi
+
+        zip="$TEMP_DIR/decky-${hash:0:12}.zip"
+        if ! curl -fsSL "${DECKY_ARTIFACT_URL}/${hash}.zip" -o "$zip"; then
+            echo "WARN: download failed for Decky plugin: $name"; continue
+        fi
+        got="$(sha256sum "$zip" | awk '{print $1}')"
+        if [ "$got" != "$hash" ]; then
+            echo "WARN: checksum mismatch for Decky plugin: $name; skipping"
+            rm -f "$zip"
+            continue
+        fi
+        unzip -q -o "$zip" -d "$plugins_dir"
+        rm -f "$zip"
+        echo "Installed Decky plugin: $name"
+    done
+}
+
+# System extras: hardware/gaming-adjacent tools Bazzite supports, applied via
+# Bazzite's own ujust targets plus a couple of Homebrew casks. (Skip with
+# --no-extras.) Note: CoolerControl is the one rpm-ostree layer, and it ships
+# in the image rather than being installed here.
+install_system_extras() {
+    step "bazzite: system extras"
+
+    if command -v ujust >/dev/null 2>&1; then
+        # Proton Plus (flatpak), Sunshine (flatpak) and CoolerControl (rpm) are
+        # baked into the MargeyShah/bazzite image, so they are not installed here.
+        # Wake-on-LAN (udev/systemd config; persists across reboots).
+        ujust wol enable || echo "WARN: Wake-on-LAN failed (run 'ujust wol enable')"
+        # Boot straight to Windows from a Steam launcher entry (dual-boot).
+        ujust setup-boot-windows-steam || echo "WARN: boot-to-Windows failed (run 'ujust setup-boot-windows-steam')"
+        # Virtualization (virt-manager flatpak + kargs + libvirtd); reboot needed.
+        ujust setup-virtualization virt-on || echo "WARN: virtualization failed (run 'ujust setup-virtualization')"
+        # Add the user to the 'input' group for controller drivers.
+        ujust add-user-to-input-group add || echo "WARN: input group failed (run 'ujust add-user-to-input-group add')"
+    else
+        echo "WARN: ujust not found; skipping ujust-based system extras"
+    fi
+
+    # LM Studio + VSCodium: Bazzite ships them via Homebrew casks in ublue-os/tap.
+    # (VSCodium is the CLI-companion editor; the image already provides VS Code
+    # as a Flatpak, so both editors are intentionally present.)
+    if brew_shellenv; then
+        brew trust ublue-os/tap 2>/dev/null || true
+        brew tap ublue-os/tap 2>/dev/null || true
+        pkg_exists lm-studio || brew install --cask lm-studio-linux \
+            || echo "WARN: LM Studio failed (run 'brew install --cask lm-studio-linux')"
+        pkg_exists codium || brew install --cask vscodium-linux \
+            || echo "WARN: VSCodium failed (run 'brew install --cask vscodium-linux')"
+    else
+        echo "WARN: Homebrew not found; skipping LM Studio + VSCodium"
+    fi
+}
+
+# Host shell: zsh from Homebrew (never rpm-ostree; Bazzite ships Homebrew).
+# There is no chsh on this image, so the login shell is changed with usermod.
+install_host_zsh() {
+    step "bazzite: host zsh"
+    local brew_bin
+    brew_bin="$(command -v brew 2>/dev/null || true)"
+    [ -n "$brew_bin" ] || brew_bin="/home/linuxbrew/.linuxbrew/bin/brew"
+    if [ ! -x "$brew_bin" ]; then
+        echo "WARN: Homebrew not found at ${brew_bin} (Bazzite ships it)."
+        echo "      Install/repair Homebrew (via ujust) and re-run; skipping host zsh."
+        return 0
+    fi
+
+    # Put brew on PATH for this process (it is not in a plain login shell's PATH).
+    eval "$("$brew_bin" shellenv)" || true
+
+    if brew list zsh >/dev/null 2>&1; then
+        echo "zsh already installed via Homebrew."
+    else
+        brew install zsh || { echo "WARN: 'brew install zsh' failed"; return 0; }
+    fi
+
+    local zsh_path
+    zsh_path="$(brew --prefix)/bin/zsh"
+    if [ ! -x "$zsh_path" ]; then
+        echo "WARN: zsh not found at ${zsh_path}; not changing the login shell."
+        return 0
+    fi
+
+    # PAM/login only accept shells listed in /etc/shells.
+    if ! grep -qxF "$zsh_path" /etc/shells 2>/dev/null; then
+        echo "$zsh_path" | sudo tee -a /etc/shells >/dev/null \
+            && echo "Added ${zsh_path} to /etc/shells."
+    fi
+
+    if command -v chsh >/dev/null 2>&1; then
+        sudo chsh -s "$zsh_path" "$(id -un)" \
+            || echo "WARN: 'chsh -s ${zsh_path}' failed"
+    else
+        sudo usermod -s "$zsh_path" "$(id -un)" \
+            || echo "WARN: 'usermod -s ${zsh_path}' failed"
+    fi
+    echo "Host login shell is now ${zsh_path} (takes effect on next login)."
+}
+
+# Verify the podman-docker shim (baked into the custom image) so `docker` works.
+install_podman_docker() {
+    step "bazzite: podman-docker"
+    if pkg_exists docker; then
+        echo "docker CLI present (podman-docker shim)."
+        return 0
+    fi
+    echo "WARN: 'docker' CLI not found. It is baked into the MargeyShah/bazzite image"
+    echo "      via podman-docker. To add it manually: sudo rpm-ostree install podman-docker && systemctl reboot"
+}
+
+# Create (idempotently) the Ubuntu Distrobox container.
+create_container() {
+    step "bazzite: distrobox container"
+    if distrobox list 2>/dev/null | grep -qw "$CONTAINER_NAME"; then
+        echo "distrobox container '$CONTAINER_NAME' already exists."
+        return 0
+    fi
+    local ini="${SCRIPT_DIR}/bazzite/distrobox.ini"
+    if [ -f "$ini" ]; then
+        distrobox assemble create --file "$ini"
+    else
+        distrobox create --name "$CONTAINER_NAME" --image ubuntu:24.04 --yes
+    fi
+}
+
+# Provision the container by running this same script inside it with the given
+# profile. The container reuses the exact same OOP app framework as every other
+# host (no bespoke provisioning script), and because a Distrobox shares $HOME
+# the symlinks it writes are the host's too.
+provision_container() {
+    local profile="$1"
+    step "bazzite: container provision (fresh_install.sh --profile ${profile})"
+    distrobox enter "$CONTAINER_NAME" -- \
+        bash "$SCRIPT_DIR/fresh_install.sh" --profile "$profile" --yes
+}
+
+# Core host steps: run for every Bazzite profile.
+bazzite_core() {
+    install_podman_docker
+    install_host_zsh
+    grant_flameshot_portal
+    create_container
+}
+
+# Desktop extras: the "Unix PC" tier on the image-based host. Skipped by the
+# dotfiles-only profile, and individually skippable with --no-gaming/--no-extras.
+bazzite_desktop_extras() {
+    install_appimages
+    if [[ "$GAMING_EXTRAS" == "yes" ]]; then
+        install_gaming_extras
+        install_decky_plugins
+    fi
+    if [[ "$SYSTEM_EXTRAS" == "yes" ]]; then
+        install_system_extras
+    fi
+}
+
+# ---------- 12. Menu ----------
+
+# Interactive profile selection. Sets PROFILE to the chosen profile name.
 display_menu() {
+    local choice
     echo "Detected OS: ${OS}"
     echo "Select a profile:"
+    if [[ "$FAMILY" == "bazzite" ]]; then
+        echo "1. Unix PC   (Bazzite desktop: host extras + Distrobox toolchain)"
+        echo "2. dotfiles only"
+        read -rp "Enter your choice: " choice
+        case "$choice" in
+            1) PROFILE="desktop" ;;
+            2) PROFILE="dotfiles" ;;
+            *) echo "Invalid choice"; exit 1 ;;
+        esac
+        return
+    fi
+
     echo "1. server    (Linux server)"
     echo "2. Unix PC   (Linux desktop)"
     echo "3. disney    (Mac work)"
     echo "4. dotfiles only"
     read -rp "Enter your choice: " choice
+    case "$choice" in
+        1) PROFILE="server" ;;
+        2) PROFILE="desktop" ;;
+        3) PROFILE="disney" ;;
+        4) PROFILE="dotfiles" ;;
+        *) echo "Invalid choice"; exit 1 ;;
+    esac
 }

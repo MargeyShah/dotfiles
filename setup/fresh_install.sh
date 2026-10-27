@@ -1,25 +1,36 @@
 #!/bin/bash
-# Unified install script for server / desktop / disney (work) profiles.
-# Auto-detects OS: mac (brew), wsl (apt), ubuntu (apt).
-# Bazzite is detected but NOT handled here — it is image-based (rpm-ostree) and
-# uses a flatpak-first + Ubuntu-Distrobox model; run setup/fresh_install_bazzite.sh
-# instead (this script refuses to run on it). The Bazzite bootstrap does re-run
-# this script *inside* its Ubuntu Distrobox with `--profile dotfiles`, so the
-# container toolchain uses this exact code path rather than a bespoke copy.
+# Single fresh-install entrypoint for every host.
+#
+# Auto-detects the OS family and runs the matching flow:
+#
+#   mac / wsl / ubuntu  apt/brew install on the host, by profile:
+#                         server    -> deps + server apps (+ snap removal)
+#                         desktop   -> deps + desktop apps (+ snap removal)
+#                         disney    -> deps + work-Mac apps
+#                         dotfiles  -> deps + dotfiles only
+#
+#   bazzite             image-based (rpm-ostree): the host is untouched apart
+#                       from flatpak/brew/ujust work. The apt CLI toolchain
+#                       lives in an Ubuntu Distrobox, provisioned by re-running
+#                       this script inside it with the chosen profile:
+#                         "Unix PC" -> host extras + box --profile desktop
+#                         dotfiles  -> host core + box --profile dotfiles
+#                       Inside the box, host-only GUI apps (GUI_APPS) are
+#                       skipped, so the profile is the apt CLI toolchain only.
 #
 # Granular failure handling: each step is tracked, overwritten files are
 # backed up to a temp dir, and the temp dir is only removed on full success.
 #
-# Shared helpers, the OOP app framework, and dotfile_setup() live in
-# setup/lib.sh (sourced below). App objects are app_<name>() functions that
-# each own their OS branching, install method, and role gating. Profiles are
-# just ordered lists of app names run through the install_apps dispatcher.
+# Shared helpers, the OOP app framework, app objects, profiles, dotfiles,
+# Bazzite host steps and the menu all live in setup/lib.sh (sourced below).
 #
 # Usage:
 #   fresh_install.sh                      # interactive menu
-#   fresh_install.sh --profile dotfiles   # skip the menu (used by Bazzite)
+#   fresh_install.sh --profile dotfiles    # skip the menu
 #   fresh_install.sh --yes                # skip the confirmation prompt
 #   fresh_install.sh --nvim               # only refresh the nvim config
+#   fresh_install.sh --no-gaming          # Bazzite: skip EmuDeck/Decky
+#   fresh_install.sh --no-extras          # Bazzite: skip ujust/brew extras
 
 set -o pipefail
 set -eE
@@ -34,14 +45,21 @@ source "${SCRIPT_DIR}/lib.sh"
 PROFILE=""
 ASSUME_YES="no"
 NVIM_ONLY="no"
+# Bazzite gaming/system extras are on by default: every target host is a gaming
+# host. The flags are harmless on the other families (they are only consulted by
+# bazzite_desktop_extras).
+GAMING_EXTRAS="yes"
+SYSTEM_EXTRAS="yes"
 while [ $# -gt 0 ]; do
     case "$1" in
         --profile=*) PROFILE="${1#*=}" ;;
         --profile)
             [ $# -ge 2 ] || { echo "--profile needs a value"; exit 1; }
             PROFILE="$2"; shift ;;
-        --yes|-y) ASSUME_YES="yes" ;;
-        --nvim)   NVIM_ONLY="yes" ;;
+        --yes|-y)      ASSUME_YES="yes" ;;
+        --nvim)        NVIM_ONLY="yes" ;;
+        --no-gaming)   GAMING_EXTRAS="no" ;;
+        --no-extras)   SYSTEM_EXTRAS="no" ;;
         *) echo "Unknown option: $1"; exit 1 ;;
     esac
     shift
@@ -59,28 +77,13 @@ if [ "$NVIM_ONLY" = "yes" ]; then
     exit 0
 fi
 
-# Bazzite is image-based (rpm-ostree); its install model is flatpak-first plus
-# an Ubuntu Distrobox, not apt/brew on the host. Send the user to the right script.
-if [[ "$FAMILY" == "bazzite" ]]; then
-    echo "This script does not manage Bazzite (image-based / rpm-ostree)."
-    echo "Use instead: ${SCRIPT_DIR}/fresh_install_bazzite.sh"
-    exit 1
-fi
-
-# Clean any leftover temp dir from a previous (failed) run, then start fresh.
+# Temp/step-log dir must exist before lib.sh's ERR trap can reference STEP_LOG.
 rm -rf "$TEMP_DIR"
 mkdir -p "$TEMP_DIR"
 cd "$TEMP_DIR"
 
 if [ -z "$PROFILE" ]; then
     display_menu
-    case "$choice" in
-        1) PROFILE="server" ;;
-        2) PROFILE="desktop" ;;
-        3) PROFILE="disney" ;;
-        4) PROFILE="dotfiles" ;;
-        *) echo "Invalid choice"; exit 1 ;;
-    esac
 fi
 
 case "$PROFILE" in
@@ -88,12 +91,43 @@ case "$PROFILE" in
     *) echo "Invalid profile: ${PROFILE} (expected server|desktop|disney|dotfiles)"; exit 1 ;;
 esac
 
+if [[ "$FAMILY" == "bazzite" ]]; then
+    case "$PROFILE" in
+        server|disney)
+            echo "Profile '${PROFILE}' does not apply to Bazzite."
+            echo "Bazzite is an image-based gaming desktop; use 'Unix PC' (desktop) or 'dotfiles'."
+            exit 1
+            ;;
+    esac
+fi
+
 if [ "$ASSUME_YES" != "yes" ]; then
     read -rp "Do you want to continue? (y/n): " confirm
     if [[ "$confirm" != "y" && "$confirm" != "Y" ]]; then
         echo "Script aborted."
         exit 1
     fi
+fi
+
+if [[ "$FAMILY" == "bazzite" ]]; then
+    # Host work first (so the box can be created), then the extras tier, then
+    # provision the container by re-running this script inside it. A Distrobox
+    # shares $HOME, so the dotfiles it symlinks are the host's too.
+    bazzite_core
+    if [[ "$PROFILE" == "desktop" ]]; then
+        bazzite_desktop_extras
+    fi
+    provision_container "$PROFILE"
+
+    # Success: remove temp dir (including backups).
+    rm -rf "$TEMP_DIR"
+    echo "Done! Enter the toolchain with 'distrobox enter ${CONTAINER_NAME}' (or run 'box')."
+    if rpm-ostree status 2>/dev/null | grep -q 'ghcr.io/margeyshah/bazzite'; then
+        echo ""
+        echo "NOTE: CoolerControl (liquidctl + coolercontrol) ships in the image as an"
+        echo "      rpm-ostree layer. Reboot to activate it:  systemctl reboot"
+    fi
+    exit 0
 fi
 
 case "$PROFILE" in

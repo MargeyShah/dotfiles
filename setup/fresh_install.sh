@@ -122,10 +122,13 @@ if [[ "$FAMILY" == "bazzite" ]]; then
     # Success: remove temp dir (including backups).
     rm -rf "$TEMP_DIR"
     echo "Done! Enter the toolchain with 'distrobox enter ${CONTAINER_NAME}' (or run 'box')."
-    if rpm-ostree status 2>/dev/null | grep -q 'ghcr.io/margeyshah/bazzite'; then
+    # CoolerControl is baked into the image, so there is nothing to activate here.
+    # Only flag it when the host is still on an older build that lacks it.
+    if rpm-ostree status 2>/dev/null | grep -q 'ghcr.io/margeyshah/bazzite' \
+        && ! rpm -q coolercontrol >/dev/null 2>&1; then
         echo ""
-        echo "NOTE: CoolerControl (liquidctl + coolercontrol) ships in the image as an"
-        echo "      rpm-ostree layer. Reboot to activate it:  systemctl reboot"
+        echo "NOTE: CoolerControl ships in newer image builds but is missing here."
+        echo "      Update the OS ('ujust update' or 'rpm-ostree upgrade') and reboot."
     fi
     exit 0
 fi

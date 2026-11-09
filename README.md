@@ -48,8 +48,9 @@ an Ubuntu Distrobox, and runs itself **inside** that container with the chosen
 profile. Steps:
 
 1. **Custom image** — `github.com/MargeyShah/bazzite` builds flatpak-first
-   Bazzite images (gnome / gnome-nvidia-open / deck-gnome / deck-nvidia-gnome).
-   Rebase once (see that repo's README), keeping upstream Bazzite updates.
+   Bazzite images (gnome / gnome-nvidia / gnome-nvidia-open / deck-gnome /
+   deck-nvidia-gnome). Rebase once (see that repo's README), keeping upstream
+   Bazzite updates.
 2. **Bootstrap** — on the host, run:
 
    ```
@@ -70,9 +71,10 @@ profile. Steps:
 
    The **GUI apps are baked into the image** (`default-flatpaks` in the
    MargeyShah/bazzite recipes: Element, VS Code, Signal, Plexamp, Hidamari,
-   osu!, Ludusavi, Heroic, Gear Lever, Flameshot, Proton Plus, Sunshine, Prism
-   Launcher, Cemu, RPCS3, Dolphin, XIVLauncher), so the bootstrap does not
-   re-install them. The Unix PC tier additionally:
+   osu!, Ludusavi, Heroic, Gear Lever, Flameshot, OBS Studio, GPU Screen
+   Recorder, Proton Plus, Sunshine, Prism Launcher, Cemu, RPCS3, Dolphin,
+   XIVLauncher), so the bootstrap does not re-install them. The Unix PC tier
+   additionally:
 
    - installs **Helium**, **Sidra**, **Ghostty** and **Vesktop** as AppImages in
      `~/AppImages` via Gear Lever (none has a suitable Flathub package; Gear

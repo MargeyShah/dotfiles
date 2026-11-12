@@ -819,57 +819,75 @@ app_cron() {
 # which shares $HOME), so the key and git config apply everywhere at once.
 app_ssh() {
     step "ssh key + git signing"
-    local key="$HOME/.ssh/id_ed25519"
+
+    # Use `git -C "$HOME"` everywhere: `git config` dies with "Unable to read
+    # current working directory" if the caller's cwd has been removed (e.g. a
+    # concurrent run's `rm -rf $TEMP_DIR`), which would otherwise abort the
+    # install here.
+    local gc=(git -C "$HOME")
+    local fmt sign_key sign
+    fmt="$("${gc[@]}" config --global --get gpg.format 2>/dev/null || true)"
+    sign_key="$("${gc[@]}" config --global --get user.signingkey 2>/dev/null || true)"
+    sign="$("${gc[@]}" config --global --get commit.gpgsign 2>/dev/null || true)"
+
+    # Prefer an existing ed25519 identity; fall back to RSA.
+    local key="" k generated="no"
+    for k in "$HOME/.ssh/id_ed25519" "$HOME/.ssh/id_rsa"; do
+        if [ -f "$k" ]; then key="$k"; break; fi
+    done
+
+    # Already done: an identity exists AND commit signing is configured. Skip
+    # key generation, key copying, and git config entirely.
+    if [ -n "$key" ] && [ -n "$sign_key" ] && [ "$fmt" = "ssh" ] && [ "$sign" = "true" ]; then
+        echo "SSH key + commit signing already configured (${sign_key}); skipping."
+        return 0
+    fi
+
     mkdir -p "$HOME/.ssh"
     chmod 700 "$HOME/.ssh"
 
-    # ssh-keygen/ssh-copy-id come from openssh-client (built into macOS).
-    if ! pkg_exists ssh-keygen; then
-        case "$FAMILY" in
-            ubuntu|bazzite) sudo apt install -y openssh-client ;;
-        esac
-    fi
-
-    # 1. Generate an ed25519 identity if one doesn't exist yet.
-    if [ ! -f "$key" ]; then
+    # Generate an ed25519 identity only when no SSH key exists at all.
+    if [ -z "$key" ]; then
+        if ! pkg_exists ssh-keygen; then
+            case "$FAMILY" in
+                ubuntu|bazzite) sudo apt install -y openssh-client ;;
+            esac
+        fi
+        key="$HOME/.ssh/id_ed25519"
         ssh-keygen -t ed25519 -N "" -C "margey@$(hostname)" -f "$key"
+        generated="yes"
     fi
     chmod 600 "$key" 2>/dev/null || true
     chmod 644 "$key.pub" 2>/dev/null || true
 
-    # 2. Trust the host + copy the key to pistachio, and 3. register the key on
-    # GitHub — only on our own (listed) machines, so a random host never pushes
-    # its key anywhere. The hostname lists live in dotfiles/zsh/env.zsh (single
-    # source of truth); unknown hosts are skipped. gh is never auto-authed.
-    local h="${HOST:-$(hostname)}" known_host="no"
-    if is_known_host; then known_host="yes"; fi
-
-    trap - ERR
-    if [ "$known_host" = "yes" ]; then
-        # 2. Trust the host + copy the key to pistachio (best-effort; may prompt).
-        grep -qF "$PISTACHIO_IP" "$HOME/.ssh/known_hosts" 2>/dev/null \
-            || ssh-keyscan -H "$PISTACHIO_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
-        if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
-                "${PISTACHIO_USER}@${PISTACHIO_IP}" true >/dev/null 2>&1; then
-            echo "Copying SSH key to ${PISTACHIO_HOST} (${PISTACHIO_USER}@${PISTACHIO_IP}); may prompt for a password..."
-            ssh-copy-id -i "$key.pub" "${PISTACHIO_USER}@${PISTACHIO_IP}" \
-                || echo "WARN: could not copy key to ${PISTACHIO_HOST}"
+    # Push a NEWLY generated key to pistachio + GitHub, but only on our own
+    # (listed) machines — a random host must never push its key anywhere. The
+    # hostname lists live in dotfiles/zsh/env.zsh; gh is never auto-authed.
+    if [ "$generated" = "yes" ]; then
+        if is_known_host; then
+            trap - ERR
+            grep -qF "$PISTACHIO_IP" "$HOME/.ssh/known_hosts" 2>/dev/null \
+                || ssh-keyscan -H "$PISTACHIO_IP" >> "$HOME/.ssh/known_hosts" 2>/dev/null || true
+            if ! ssh -o BatchMode=yes -o ConnectTimeout=5 \
+                    "${PISTACHIO_USER}@${PISTACHIO_IP}" true >/dev/null 2>&1; then
+                echo "Copying SSH key to ${PISTACHIO_HOST} (${PISTACHIO_USER}@${PISTACHIO_IP}); may prompt for a password..."
+                ssh-copy-id -i "$key.pub" "${PISTACHIO_USER}@${PISTACHIO_IP}" \
+                    || echo "WARN: could not copy key to ${PISTACHIO_HOST}"
+            fi
+            if pkg_exists gh; then
+                ( cd "$HOME" && gh ssh-key add "$key.pub" --title "margey@$(hostname) (ed25519)" ) 2>/dev/null \
+                    || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
+            fi
+            trap 'on_fail' ERR
+        else
+            echo "Skipping pistachio key copy + GitHub key push (host ${HOST:-$(hostname)} is not in env.zsh host lists)"
         fi
-
-        # 3. Register the public key on GitHub (best-effort; never auto-auths).
-        if pkg_exists gh; then
-            gh ssh-key add "$key.pub" --title "margey@$(hostname) (ed25519)" 2>/dev/null \
-                || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
-        fi
-    else
-        echo "Skipping pistachio key copy + GitHub key push (host ${h} is not in env.zsh host lists)"
     fi
-    trap 'on_fail' ERR
 
-    # 4. Sign commits with this SSH key so they show as Verified on GitHub.
-    git config --global gpg.format ssh
-    git config --global user.signingkey "$key.pub"
-    git config --global commit.gpgsign true
+    # Configure commit signing with the chosen identity so commits show Verified.
+    "${gc[@]}" config --global gpg.format ssh
+    "${gc[@]}" config --global user.signingkey "$key.pub"
+    "${gc[@]}" config --global commit.gpgsign true
 }
 
 # --- Disney (work Mac) apps ---

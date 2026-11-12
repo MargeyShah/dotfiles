@@ -156,9 +156,11 @@ skip work that is already done — `appimage_integrated` asks Gear Lever itself
 
 ## SSH & commit signing
 
-Every install runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
-if absent and configures git to **sign commits with SSH** (`gpg.format=ssh`,
-`commit.gpgsign=true`) so they show as *Verified*.
+Every install runs `app_ssh`, which is idempotent: if an SSH key already exists
+**and** commit signing is already configured, it skips entirely. Otherwise it
+uses an existing key (`id_ed25519`, else `id_rsa`) or generates an
+`~/.ssh/id_ed25519` when none exists, then configures git to **sign commits with
+SSH** (`gpg.format=ssh`, `commit.gpgsign=true`) so they show as *Verified*.
 
 Copying that key to **pistachio** (`margey@192.168.0.2`) and registering it on
 GitHub via `gh` (best-effort) are **only done on our own machines** — the

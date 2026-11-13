@@ -1,0 +1,42 @@
+[3dbe37f3-12a9-495d-b555-372a594f1c08]
+Description=Window settings for im.riot.Riot
+title=Element *
+position=3440,0
+positionrule=3
+size=1170,1280
+sizerule=3
+types=1
+wmclass=\sim.riot.Riot
+wmclasscomplete=true
+wmclassmatch=1
+
+[71154f46-eff4-4bc5-9b05-9ac0c66589f5]
+Description=Window settings for vesktop
+position=3440,1280
+positionrule=3
+size=1440,1280
+sizerule=3
+title=• Discord | Friends
+types=1
+wmclass=\svesktop
+wmclasscomplete=true
+wmclassmatch=1
+
+[General]
+count=4
+rules=ab5395c3-8f25-44fb-8e5e-72063800c527,3dbe37f3-12a9-495d-b555-372a594f1c08,71154f46-eff4-4bc5-9b05-9ac0c66589f5,1
+
+[ab5395c3-8f25-44fb-8e5e-72063800c527]
+Description=Window settings for Plexamp
+clientmachine=localhost
+position=4610,0
+positionrule=3
+size=270,1308
+sizerule=3
+title=Plexamp
+types=1
+windowrole=browser-window
+windowrolematch=1
+wmclass=plexamp Plexamp
+wmclasscomplete=true
+wmclassmatch=1

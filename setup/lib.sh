@@ -1304,6 +1304,25 @@ install_decky_plugins() {
 
     local plugins_dir="$HOME/homebrew/plugins"
     mkdir -p "$plugins_dir"
+    # Decky Loader (or a previous run) can leave ~/homebrew/plugins owned by
+    # root -- e.g. after the first `ujust setup-decky install` on a device where
+    # Decky hoisted the dir as root, while every other decky dir stays user-owned.
+    # When that happens both ADDING a new plugin (unzip into the dir) and DELETING
+    # an old one (removing a stale plugin folder) fail with "operation not
+    # permitted". Normalize ownership to the current user up front so add/remove
+    # succeed instead of needing a manual `sudo chown -R`. Only invokes sudo when
+    # there actually is a root-owned entry, so an already-fine re-run doesn't
+    # prompt.
+    if [ -n "$(find "$plugins_dir" -user root -print -quit 2>/dev/null)" ]; then
+        if command -v sudo >/dev/null 2>&1; then
+            if ! sudo chown -R "$(id -un):$(id -gn)" "$plugins_dir"; then
+                echo "WARN: could not chown ${plugins_dir} to $(id -un); plugin add/remove may fail with EPERM"
+                echo "      run: sudo chown -R $(id -un):$(id -gn) ${plugins_dir}"
+            fi
+        else
+            echo "WARN: ${plugins_dir} is root-owned but sudo is unavailable; plugin add/remove may fail with EPERM"
+        fi
+    fi
 
     local store_json="$TEMP_DIR/decky-store.json"
     if ! curl -fsSL "$DECKY_STORE_URL" -o "$store_json" || [ ! -s "$store_json" ]; then

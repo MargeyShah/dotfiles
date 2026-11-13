@@ -49,8 +49,8 @@ profile. Steps:
 
 1. **Custom image** — `github.com/MargeyShah/bazzite` builds flatpak-first
    Bazzite images (gnome / gnome-nvidia / gnome-nvidia-open / deck-gnome /
-   deck-nvidia-gnome). Rebase once (see that repo's README), keeping upstream
-   Bazzite updates.
+   deck-nvidia-gnome / **deck-nvidia — KDE Plasma**). Rebase once (see that
+   repo's README), keeping upstream Bazzite updates.
 2. **Bootstrap** — on the host, run:
 
    ```
@@ -139,6 +139,12 @@ profile. Steps:
    once after rebasing** to activate it. Android Platform Tools (adb/fastboot)
    are part of the regular dotfiles dependency set and so are installed inside
    the Distrobox.
+
+   **KDE/Plasma theme & panel as code.** The `bazzite-deck-nvidia` image is the
+   KDE/Plasma variant. To turn a Plasma look that only exists on a live device
+   into repeatable code, run `setup/bazzite/kde-config-export.sh` on it — it
+   copies the panel layout, color scheme, window decorations and look-and-feel
+   into `dotfiles/kde/` for committing (see `dotfiles/kde/README.md`).
 
    **Hanabi** (the GNOME Shell live-wallpaper extension used with Hidamari) is
    not on Flathub or extensions.gnome.org, so it is not installed automatically.

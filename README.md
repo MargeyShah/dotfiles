@@ -156,9 +156,22 @@ skip work that is already done — `appimage_integrated` asks Gear Lever itself
 
 ## SSH & commit signing
 
-Every install runs `app_ssh`: it generates an `~/.ssh/id_ed25519`
-if absent and configures git to **sign commits with SSH** (`gpg.format=ssh`,
-`commit.gpgsign=true`) so they show as *Verified*.
+Every install runs `app_ssh`. It reuses an existing SSH identity — `id_ed25519`,
+else `id_rsa`/`id_ecdsa`, else any other `~/.ssh/id_*` key, else any key with a
+matching `.pub` — and only generates `~/.ssh/id_ed25519` when **no** key exists
+(it never overwrites or duplicates a key you already have). It then configures
+git to **sign commits with SSH** (`gpg.format=ssh`, `user.signingkey`,
+`commit.gpgsign=true`) and writes `~/.ssh/allowed_signers` (setting
+`gpg.ssh.allowedSignersFile`) so signatures verify locally too. If commit signing
+is already configured — any `user.signingkey`, or a GPG `gpg.format` — it leaves
+that setup untouched rather than overwriting it.
+
+For GitHub to show a commit as *Verified*, two further things must hold: the
+signing key must be registered on GitHub as an SSH **signing** key
+(`gh ssh-key add <key.pub> --type signing`; needs the `admin:ssh_signing_key`
+scope), and the committer email must be a verified address on the account. The
+script registers a **newly generated** key for signing; a pre-existing key it
+merely reuses is left for you to register. It never sets `user.name`/`user.email`.
 
 Copying that key to **pistachio** (`margey@192.168.0.2`) and registering it on
 GitHub via `gh` (best-effort) are **only done on our own machines** — the

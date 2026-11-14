@@ -1278,6 +1278,9 @@ install_gaming_extras() {
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
     fi
 
+    # EmuDeck cross-device save layout (see setup/emudeck.md).
+    emudeck_crossdevice_saves
+
     # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
     # so installed via its own ujust recipe into ~/homebrew/plugins/Bazzite Buddy).
     # It requires Decky Loader, so only install it once Decky is really present.
@@ -1288,6 +1291,36 @@ install_gaming_extras() {
     else
         ujust get-decky-bazzite-buddy install || echo "WARN: Bazzite Buddy install failed (run 'ujust get-decky-bazzite-buddy' manually)"
     fi
+}
+
+# Enforce a cross-device EmuDeck save layout: every emulator's save data
+# physically lives under <Emulation>/saves/<emu> on the shared NAS so Windows
+# and Linux (and EmuDeck cloud saves) use the same files.
+#
+# Driven by setup/emudeck/emudeck-crossdevice-saves.sh + emulators.conf
+# (generic, data-driven: one line per emulator, see setup/emudeck.md).
+# Also installs the engine into EmuDeck's custom_scripts hook so it re-runs
+# after every EmuDeck Setup — EmuDeck updates overwrite its backend scripts,
+# but never custom_scripts/, so the layout survives updates.
+emudeck_crossdevice_saves() {
+    local emudeck_dir="$SCRIPT_DIR/emudeck"
+    local engine="$emudeck_dir/emudeck-crossdevice-saves.sh"
+    [ -f "$engine" ] || { echo "WARN: emudeck-crossdevice-saves.sh missing ($engine)"; return 0; }
+
+    # Not needed / possible until EmuDeck has configured its Emulation root.
+    [ -f "$HOME/.config/EmuDeck/settings.sh" ] || {
+        echo "  EmuDeck not configured yet; skipping cross-device save layout"
+        return 0
+    }
+
+    # Keep the EmuDeck custom_scripts hook in sync with the repo copy.
+    mkdir -p "$HOME/.config/EmuDeck/custom_scripts"
+    cp -f "$engine" "$HOME/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh"
+    cp -f "$emudeck_dir/emulators.conf" "$HOME/.config/EmuDeck/custom_scripts/emulators.conf"
+    chmod +x "$HOME/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh"
+
+    step "emudeck: cross-device save layout"
+    bash "$engine" || echo "WARN: emudeck cross-device save layout reported issues (see setup/emudeck.md)"
 }
 
 # Install Decky plugins from the Decky store (deckbrew). Each plugin zip is

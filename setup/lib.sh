@@ -870,13 +870,18 @@ app_ssh() {
         done
     fi
 
-    # Respect an existing commit-signing setup instead of overwriting it. If the
-    # user already has a signing key (GPG/SSH) or an explicit gpg.format, leave
-    # it untouched — we only configure SSH signing when nothing is set up.
-    if [ -n "$sign_key" ] || [ "$fmt" = "openpgp" ]; then
-        ssh_allowed_signers "$sign_key"
-        echo "Commit signing already configured (${sign_key:-gpg/${fmt:-openpgp}}); leaving it alone."
+    # Respect an existing GPG setup — never replace GPG with SSH signing.
+    if [ "$fmt" = "openpgp" ]; then
+        echo "GPG commit signing already configured; leaving it alone."
         return 0
+    fi
+
+    # SSH signing: if one is already configured, keep using that key (not the
+    # heuristic below, which would otherwise pick a different key and silently
+    # change the signing identity). We still re-verify the GitHub registration
+    # below so commits are never silently left unverified.
+    if [ -n "$sign_key" ] && [ -f "${sign_key%.pub}" ]; then
+        key="${sign_key%.pub}"
     fi
 
     mkdir -p "$HOME/.ssh"
@@ -896,9 +901,10 @@ app_ssh() {
     chmod 600 "$key" 2>/dev/null || true
     chmod 644 "$key.pub" 2>/dev/null || true
 
-    # Push a NEWLY generated key to pistachio + GitHub, but only on our own
-    # (listed) machines — a random host must never push its key anywhere. The
-    # hostname lists live in dotfiles/zsh/env.zsh; gh is never auto-authed.
+    # Push a NEWLY generated key to pistachio (and its auth key to GitHub), but
+    # only on our own (listed) machines — a random host must never push its key
+    # anywhere. The hostname lists live in dotfiles/zsh/env.zsh; gh never
+    # auto-authenticates. This is one-time (a key is generated only once).
     if [ "$generated" = "yes" ]; then
         if is_known_host; then
             trap - ERR
@@ -915,11 +921,6 @@ app_ssh() {
                 # Authentication key (clone/push over SSH).
                 ( cd "$HOME" && gh ssh-key add "$key.pub" --title "$title" ) 2>/dev/null \
                     || echo "NOTE: SSH key already on GitHub, or run 'gh auth login' then re-run to add it."
-                # Register the key for commit signing too: an auth-only key never
-                # shows commits as Verified on GitHub. Needs the extra scope:
-                #   gh auth refresh -h github.com -s admin:ssh_signing_key
-                ( cd "$HOME" && gh ssh-key add "$key.pub" --type signing --title "$title (signing)" ) 2>/dev/null \
-                    || echo "NOTE: for Verified commits add the key as an SSH signing key: gh auth refresh -h github.com -s admin:ssh_signing_key && gh ssh-key add \"$key.pub\" --type signing"
             fi
             trap 'on_fail' ERR
         else
@@ -927,8 +928,24 @@ app_ssh() {
         fi
     fi
 
+    # Register the key as a GitHub *signing* key so commits show Verified — this
+    # runs on EVERY pass on our machines (not just when a key was just
+    # generated), because an auth-only key silently leaves commits unverified.
+    # Needs the extra scope if missing: gh auth refresh -h github.com -s admin:ssh_signing_key
+    if is_known_host && pkg_exists gh; then
+        local title="margey@$(hostname) ($(basename "$key"))"
+        ( cd "$HOME" && gh ssh-key add "$key.pub" --type signing --title "$title (signing)" ) 2>/dev/null \
+            && echo "GitHub SSH signing key registered." \
+            || echo "NOTE: for Verified commits ensure the key is an SSH signing key (scope needed): gh auth refresh -h github.com -s admin:ssh_signing_key && gh ssh-key add \"$key.pub\" --type signing"
+    fi
+
     # Configure commit signing with the chosen identity so commits show Verified.
+    # user.email MUST be one GitHub maps to the same account that owns the
+    # signing key (here margeyshah@live.com -> MargeyShah); otherwise git would
+    # keep committing as gmail.com -> ThePotatoMoon and the signature is
+    # "unverified" even though the key is valid.
     "${gc[@]}" config --global gpg.format ssh
+    "${gc[@]}" config --global user.email margeyshah@live.com
     "${gc[@]}" config --global user.signingkey "$key.pub"
     "${gc[@]}" config --global commit.gpgsign true
     ssh_allowed_signers "$key.pub"

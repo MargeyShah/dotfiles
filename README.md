@@ -99,14 +99,13 @@ profile. Steps:
    `distrobox enter bazzite-ubuntu`, or run `box` (an fzf picker of every
    Distrobox; it enters straight away when only one exists).
 
-   **Terminal flow:** a new window opens a **host zsh**
-   (Ptyxis profile: Container = `session`, Custom Command =
-   `/home/linuxbrew/.linuxbrew/bin/zsh -l`). That host shell auto-starts
-   **zellij**, and zellij's `default_shell` is
-   `dotfiles/.config/zellij/box-shell`, so **every pane runs inside
-   `bazzite-ubuntu`**. `distrobox enter` runs as a child of that wrapper (no
-   `exec`), so `exit` in the box falls back to a **host zsh in the same pane**;
-   `exit` again closes the pane. `box` is still there for ad-hoc use.
+   **Terminal flow:** a new window opens a **host zsh** — the default login
+   shell (**Homebrew zsh**, set by `install_host_zsh`; Ptyxis is not touched,
+   no profile is written). That host shell auto-starts **zellij**, and zellij's
+   `default_shell` is `dotfiles/.config/zellij/box-shell`, so **every pane runs
+   inside `bazzite-ubuntu`**. `distrobox enter` runs as a child of that wrapper
+   (no `exec`), so `exit` in the box falls back to a **host zsh in the same
+   pane**; `exit` again closes the pane. `box` is still there for ad-hoc use.
 
    zellij never runs inside the container: `is_server()` in `env.zsh` returns
    true when `$CONTAINER_ID` is set (which needs no distrobox binary, so it is

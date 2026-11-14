@@ -473,11 +473,19 @@ app_cargo() {
 
 app_starship() {
     step "starship"
-    pkg_exists starship && return
+    # Always install on Linux, whether or not this host is in a name list.
+    # Pin the install dir to the shared, dotfiles-PATH'd ~/.local/bin (on both
+    # host and Distrobox via init_apps.zsh), so starship is reliably on PATH
+    # even when a desktop/box-shell flow isn't wired up on this particular host.
+    # Without pinning, the upstream installer can pick container-local
+    # /usr/local/bin, which is invisible from a host login shell.
+    [ -x "$HOME/.local/bin/starship" ] && return
     if [[ "$FAMILY" == "mac" ]]; then
         brew install starship
     else
-        curl -sS https://starship.rs/install.sh | sh -s -- -y
+        mkdir -p "$HOME/.local/bin"
+        curl -sSfL https://starship.rs/install.sh \
+            | sh -s -- -y --bin-dir "$HOME/.local/bin"
     fi
 }
 

@@ -25,9 +25,10 @@
 #   emu          emulator id; also the folder under <Emulation>/saves/ (and
 #                storage/<emu>/ for shared game data)
 #   target_rel   physical folder under <Emulation>/saves/ that holds the saves
-#   from_paths   ';'-separated emulator-side paths that must resolve to the
-#                target (they become symlinks). Use "${EMU_ROOT}"/"${HOME}".
-#                '-'/empty = none.
+#   from_paths   ';'-separated paths that must resolve to the target (they
+#                become symlinks). Use "${EMU_ROOT}"/"${HOME}". Normally an
+#                emulator-side dir, but a stale alias under saves/ is allowed
+#                too (see the Dolphin states row). '-'/empty = none.
 #   config_edits ';'-separated "configfile=key" entries. The key is set to the
 #                target path (config backed up). Both "key = value" and
 #                "key: value" (vfs.yml-style) separators are handled.
@@ -47,7 +48,8 @@
 #   rpcs3|rpcs3/saves|${EMU_ROOT}/storage/rpcs3/dev_hdd0/home/00000001/savedata|-|-|dev_hdd0|${HOME}/.config/rpcs3/dev_hdd0|${HOME}/.config/rpcs3/vfs.yml=/dev_hdd0/
 #
 # Usage:
-#   emudeck-crossdevice-saves.sh [EMU_ROOT] [SAVES_CONF]
+#   emudeck-crossdevice-saves.sh [--check] [EMU_ROOT] [SAVES_CONF]
+#     --check     report the current layout and write nothing (alias: --dry-run)
 #     EMU_ROOT    the Emulation root. Default: read from EmuDeck settings.sh.
 #     SAVES_CONF  path to emulators.conf. Default: next to this script.
 #
@@ -58,6 +60,35 @@
 set -euo pipefail
 
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+
+# ---------------------------------------------------------------------------
+# Arguments
+# ---------------------------------------------------------------------------
+CHECK_ONLY=0
+POSITIONAL=()
+for arg in "$@"; do
+    case "$arg" in
+        --check|--dry-run|-n|--report) CHECK_ONLY=1 ;;
+        -h|--help)
+            cat <<'EOF'
+Usage: emudeck-crossdevice-saves.sh [--check] [EMU_ROOT] [SAVES_CONF]
+
+  --check     report the current layout; make no changes (alias: --dry-run)
+  EMU_ROOT    Emulation root (default: read from EmuDeck settings.sh)
+  SAVES_CONF  emulators.conf path (default: next to this script)
+EOF
+            exit 0
+            ;;
+        *)
+            POSITIONAL+=("$arg")
+            ;;
+    esac
+done
+if [ "${#POSITIONAL[@]}" -gt 0 ]; then
+    set -- "${POSITIONAL[@]}"
+else
+    set --
+fi
 
 # ---------------------------------------------------------------------------
 # Resolve the Emulation root
@@ -119,15 +150,74 @@ merge_newest_wins() {
     done < <(find "$src" -type f -print0 2>/dev/null)
 }
 
+# short human-readable state for --check
+describe_path() {
+    local p="$1"
+    if [ -L "$p" ]; then
+        printf 'symlink -> %s' "$(readlink "$p")"
+    elif [ -d "$p" ]; then
+        printf 'directory'
+    elif [ -e "$p" ]; then
+        printf 'file'
+    else
+        printf 'absent'
+    fi
+}
+
 # make $from a symlink to $target, preserving any existing data (newest-wins)
 enforce_link() {
     local from="$1" target="$2" win_priority="$3"
     [ -n "$from" ] || return 0
+
+    if [ "$CHECK_ONLY" = "1" ]; then
+        local from_state target_state resolved from_resolved
+        from_state="$(describe_path "$from")"
+        target_state="$(describe_path "$target")"
+        resolved="$(readlink -f "$target" 2>/dev/null || true)"
+        from_resolved="$(readlink -f "$from" 2>/dev/null || true)"
+        if [ -L "$target" ]; then
+            echo "  [check] fix     $from ($from_state) -> $target (target is a symlink: $(readlink "$target"))"
+        elif [ -L "$from" ] && [ -n "$resolved" ] && [ "$from_resolved" = "$resolved" ]; then
+            echo "  [check] ok      $from ($from_state) -> $target"
+        else
+            echo "  [check] fix     $from ($from_state) -> $target ($target_state)"
+        fi
+        return 0
+    fi
+
     mkdir -p "$(dirname "$from")"
+
     # The target must be a real directory (the physical home of the data).
-    # If it is currently a symlink (inverted layout), drop the link first.
-    [ -L "$target" ] && unlink "$target"
-    mkdir -p "$target"
+    # If it is currently a symlink (EmuDeck's inverted layout), keep the data
+    # that lives behind it before replacing it.
+    if [ -L "$target" ]; then
+        local old_target old_resolved from_resolved from_is_real_dir
+        old_target="$(readlink "$target" 2>/dev/null || true)"
+        old_resolved="$(readlink -f "$target" 2>/dev/null || true)"
+        from_resolved="$(readlink -f "$from" 2>/dev/null || true)"
+        from_is_real_dir=0
+        if [ -d "$from" ] && [ ! -L "$from" ]; then from_is_real_dir=1; fi
+        unlink "$target"
+        mkdir -p "$target"
+        # Preserve the data behind an inverted target. Skip only when $from is
+        # a real directory with the same data; the from-handling below merges it.
+        if [ -n "$old_resolved" ] && [ -d "$old_resolved" ] && \
+           ! { [ "$from_is_real_dir" = "1" ] && [ "$old_resolved" = "$from_resolved" ]; }; then
+            if [ "$win_priority" = "1" ]; then
+                local archive_dir
+                archive_dir="$STORAGE_ROOT/_crossdevice-archive/$(date +%Y%m%d%H%M%S)"
+                mkdir -p "$archive_dir"
+                echo "  win_priority: archiving inverted target $old_target"
+                mv "$old_resolved" "$archive_dir/$(basename "$old_resolved")"
+            else
+                echo "  merging inverted target $old_target into $target (newest wins)"
+                merge_newest_wins "$old_resolved" "$target"
+            fi
+        fi
+    else
+        mkdir -p "$target"
+    fi
+
     if [ -L "$from" ]; then
         # already a link; repoint it (idempotent)
         ln -snf "$target" "$from"
@@ -155,44 +245,78 @@ enforce_link() {
 # point a config key at a path (backed up). Handles both "key = value" (ini)
 # and "key: value" (vfs.yml-style) separators, preserving the existing style.
 # No-op when the key already resolves to the target (keeps working configs
-# untouched, e.g. values with a trailing slash).
+# untouched, e.g. values with a trailing slash). Key matching is
+# case-insensitive because PCSX2 uses "Savestates" and EmuDeck writes
+# "SaveStates".
 enforce_config() {
     local cfg="$1" key="$2" target="$3"
     [ -n "$cfg" ] || return 0
     [ -f "$cfg" ] || { echo "  config not found (skip): $cfg"; return 0; }
+
+    local actual_key lineno cur sep quote
+    actual_key=""
+    lineno=""
+    cur=""
+    if grep -qiE "^\s*${key}\s*(=|:)" "$cfg"; then
+        actual_key="$(grep -iE "^\s*${key}\s*(=|:)" "$cfg" | head -n1 \
+            | sed -E 's/^[[:space:]]*([^=:]+)[[:space:]]*(=|:).*/\1/' || true)"
+        lineno="$(grep -inE "^\s*${key}\s*(=|:)" "$cfg" | head -n1 | cut -d: -f1 || true)"
+        cur="$(grep -iE "^\s*${key}\s*(=|:)\s*.*" "$cfg" | head -n1 \
+            | sed -E 's/^[[:space:]]*[^=:]+[[:space:]]*(=|:)[[:space:]]*//' || true)"
+        cur="${cur%\"}"; cur="${cur#\"}"
+    fi
+
+    local tgt_norm="${target%/}"
+
+    if [ "$CHECK_ONLY" = "1" ]; then
+        if [ -z "$actual_key" ]; then
+            echo "  [check] fix     $cfg : missing key '$key' (want $target)"
+        elif [ "$cur" = "$tgt_norm" ] || [ "$cur" = "$tgt_norm/" ]; then
+            echo "  [check] ok      $cfg : $actual_key = $cur"
+        else
+            echo "  [check] fix     $cfg : $actual_key = '$cur' (want $target)"
+        fi
+        return 0
+    fi
+
     # backup once per config (timestamped)
     local bak="${cfg}.crossdevice.bak"
     [ -f "$bak" ] || cp "$cfg" "$bak"
 
-    local sep="="
-    if grep -qE "^\s*${key}\s*:" "$cfg"; then sep=": "; fi
-    local quote=""
-    if grep -qE "^\s*${key}\s*${sep}\s*\"" "$cfg"; then quote='"'; fi
-
     # already pointing at the target? leave it alone (path-normalized compare)
-    local cur tgt_norm
-    cur="$(grep -E "^\s*${key}\s*(=|:)\s*.*" "$cfg" | head -n1 \
-           | sed -E "s#^\s*${key}\s*(=|:)\s*##")"
-    cur="${cur%\"}"; cur="${cur#\"}"
-    tgt_norm="${target%/}"
-    if [ -n "$cur" ] && { [ "$cur" = "$tgt_norm" ] || [ "$cur" = "$tgt_norm/" ]; }; then
-        echo "  config ok (already set): $cfg : $key = $target"
+    if [ -n "$actual_key" ] && { [ "$cur" = "$tgt_norm" ] || [ "$cur" = "$tgt_norm/" ]; }; then
+        echo "  config ok (already set): $cfg : $actual_key = $target"
         return 0
     fi
 
-    if grep -qE "^\s*${key}\s*(=|:)" "$cfg"; then
-        sed -i -E "s#^(\s*${key}\s*(=|:)\s*).*#\1${quote}${target}${quote}#" "$cfg"
+    sep="="
+    if grep -qiE "^\s*${key}\s*:" "$cfg"; then sep=": "; fi
+    quote=""
+    if grep -qiE "^\s*${key}\s*(=|:)\s*\"" "$cfg"; then quote='"'; fi
+
+    if [ -n "$actual_key" ] && [ -n "$lineno" ]; then
+        sed -i -E "${lineno}s#^([[:space:]]*[^=:]+[[:space:]]*(=|:)[[:space:]]*).*#\1${quote}${target}${quote}#" "$cfg"
+        echo "  config set: $cfg : $actual_key $sep $target"
+    elif grep -qE '^\s*\[' "$cfg"; then
+        # We do not know which [Section] a missing key belongs to, and
+        # appending to the end of an INI would silently do nothing.
+        echo "  WARN: key '$key' not found in sectioned config $cfg; not appending (fix manually)"
     else
+        # Sectionless config (vfs.yml-style): appending a top-level key is safe.
         printf '\n%s%s"%s"\n' "$key" "$sep" "$target" >> "$cfg"
+        echo "  config set: $cfg : $key $sep $target"
     fi
-    echo "  config set: $cfg : $key $sep $target"
 }
 
 # ---------------------------------------------------------------------------
 # Process definitions
 # ---------------------------------------------------------------------------
 echo "=== EmuDeck cross-device layout (root: $EMU_ROOT) ==="
-mkdir -p "$SAVES_ROOT"
+if [ "$CHECK_ONLY" = "1" ]; then
+    echo "=== CHECK MODE: no changes will be made ==="
+else
+    mkdir -p "$SAVES_ROOT"
+fi
 
 while IFS='|' read -r emu target_rel from_paths config_edits options storage_rel storage_links storage_config_edits; do
     [ -n "$emu" ] || continue
@@ -223,7 +347,9 @@ while IFS='|' read -r emu target_rel from_paths config_edits options storage_rel
     if [ -n "$storage_rel" ] && [ "$storage_rel" != "-" ]; then
         storage_target="$STORAGE_ROOT/$emu/$storage_rel"
         echo "[$emu] shared game storage: $storage_target"
-        mkdir -p "$(dirname "$storage_target")" "$storage_target"
+        if [ "$CHECK_ONLY" != "1" ]; then
+            mkdir -p "$(dirname "$storage_target")" "$storage_target"
+        fi
 
         IFS=';' read -r -a slinks <<< "$storage_links"
         for s in "${slinks[@]:-}"; do
@@ -238,4 +364,8 @@ while IFS='|' read -r emu target_rel from_paths config_edits options storage_rel
     fi
 done < "$CONF"
 
-echo "=== done ==="
+if [ "$CHECK_ONLY" = "1" ]; then
+    echo "=== check complete (no changes made) ==="
+else
+    echo "=== done ==="
+fi

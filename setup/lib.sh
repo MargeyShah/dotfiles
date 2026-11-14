@@ -1303,7 +1303,7 @@ install_gaming_extras() {
         ujust setup-decky install || echo "WARN: Decky install failed (run 'ujust setup-decky' manually)"
     fi
 
-    # EmuDeck cross-device save layout (see setup/emudeck.md).
+    # EmuDeck cross-device save layout (see setup/emudeck/README.md).
     emudeck_crossdevice_saves
 
     # Bazzite Buddy (official ublue changelog plugin; not in the deckbrew store,
@@ -1323,7 +1323,7 @@ install_gaming_extras() {
 # and Linux (and EmuDeck cloud saves) use the same files.
 #
 # Driven by setup/emudeck/emudeck-crossdevice-saves.sh + emulators.conf
-# (generic, data-driven: one line per emulator, see setup/emudeck.md).
+# (generic, data-driven: one line per emulator, see setup/emudeck/README.md).
 # Also installs the engine into EmuDeck's custom_scripts hook so it re-runs
 # after every EmuDeck Setup — EmuDeck updates overwrite its backend scripts,
 # but never custom_scripts/, so the layout survives updates.
@@ -1338,14 +1338,19 @@ emudeck_crossdevice_saves() {
         return 0
     }
 
-    # Keep the EmuDeck custom_scripts hook in sync with the repo copy.
+    # Point the EmuDeck custom_scripts hook at the repo copies via symlinks, so
+    # the hook always runs the current engine/conf with no copy step to drift.
+    # EmuDeck runs every custom_scripts/*.sh via `bash $entry` (setup.sh) and
+    # never rewrites custom_scripts/ (only its own backend/), so the symlinks
+    # persist across Setup runs. Run this function again to (re)create them
+    # after a fresh EmuDeck install — it is a no-op when they already exist.
     mkdir -p "$HOME/.config/EmuDeck/custom_scripts"
-    cp -f "$engine" "$HOME/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh"
-    cp -f "$emudeck_dir/emulators.conf" "$HOME/.config/EmuDeck/custom_scripts/emulators.conf"
-    chmod +x "$HOME/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh"
+    ln -sfn "$engine" "$HOME/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh"
+    ln -sfn "$emudeck_dir/emulators.conf" "$HOME/.config/EmuDeck/custom_scripts/emulators.conf"
+    chmod +x "$engine"   # symlink mode follows the target; keep the repo copy executable
 
     step "emudeck: cross-device save layout"
-    bash "$engine" || echo "WARN: emudeck cross-device save layout reported issues (see setup/emudeck.md)"
+    bash "$engine" || echo "WARN: emudeck cross-device save layout reported issues (see setup/emudeck/README.md)"
 }
 
 # Install Decky plugins from the Decky store (deckbrew). Each plugin zip is

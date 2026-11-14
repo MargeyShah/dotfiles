@@ -1,4 +1,9 @@
-# EmuDeck cross-device save sharing
+# EmuDeck cross-device save sharing — Linux side
+
+> **Entry point:** start at [`README.md`](README.md) — it asks which machine
+> (Windows or Linux) you are starting from and explains the filesystem
+> expectations (NFS on Linux, SMB on Windows). This file is the **Linux**
+> procedure; the Windows procedure is [`emudeck-windows.md`](emudeck-windows.md).
 
 Make every emulator's save data physically live under `<Emulation>/saves/<emu>`
 on a NAS shared between **Windows and Linux**, so any machine reads/writes the
@@ -121,16 +126,18 @@ setup/emudeck/emudeck-crossdevice-saves.sh --check   # read-only; shows the old 
 setup/emudeck/emudeck-crossdevice-saves.sh           # applies the fixes (idempotent)
 setup/emudeck/emudeck-crossdevice-saves.sh --check   # should show no [check] fix lines
 
-# refresh the copy EmuDeck runs at the end of every Setup
+# point the EmuDeck custom_scripts hook at the repo copies (EmuDeck runs
+# every custom_scripts/*.sh at the end of Setup; symlinks stay current, no
+# copy step to drift — see lib.sh emudeck_crossdevice_saves)
 mkdir -p ~/.config/EmuDeck/custom_scripts
-cp setup/emudeck/emudeck-crossdevice-saves.sh setup/emudeck/emulators.conf ~/.config/EmuDeck/custom_scripts/
-chmod +x ~/.config/EmuDeck/custom_scripts/emudeck-crossdevice-saves.sh
+ln -sfn "$PWD/setup/emudeck/emudeck-crossdevice-saves.sh" ~/.config/EmuDeck/custom_scripts/
+ln -sfn "$PWD/setup/emudeck/emulators.conf" ~/.config/EmuDeck/custom_scripts/
 ```
 
 The last three commands matter for persistence: without them, the next EmuDeck
 Setup runs the **old** engine/conf from `custom_scripts` and can restore the
-old Dolphin/RetroArch layout. `setup/lib.sh` does this copy automatically when
-`emudeck_crossdevice_saves` runs.
+old Dolphin/RetroArch layout. `setup/lib.sh` installs these symlinks
+automatically when `emudeck_crossdevice_saves` runs.
 
 Expected old-layout lines in the first `--check` (the second command fixes
 them):
@@ -150,18 +157,20 @@ commands (Setup runs this engine itself at the end). No emulator Reset config
 is needed on Linux.
 
 It is also wired into `setup/fresh_install.sh` → `setup/lib.sh`
-(`emudeck_crossdevice_saves`, called after EmuDeck install), and **installed
-into `~/.config/EmuDeck/custom_scripts/`** so every EmuDeck Setup re-applies it.
-EmuDeck updates overwrite its `backend/` scripts but never `custom_scripts/`,
-so this survives updates. To re-apply manually after a Setup that ran before
-the engine was installed, just run the script again (idempotent).
+(`emudeck_crossdevice_saves`, called after EmuDeck install), which **symlinks
+the engine and `emulators.conf` into `~/.config/EmuDeck/custom_scripts/`** so
+every EmuDeck Setup re-applies it. EmuDeck updates overwrite its `backend/`
+scripts but never `custom_scripts/`, so this survives updates. To re-apply
+manually after a Setup that ran before the engine was linked in, just run the
+script again (idempotent).
 
 ### Persistence and tested versions
 
-- **Linux:** `setup/lib.sh` copies the engine and `emulators.conf` to
+- **Linux:** `setup/lib.sh` **symlinks** the engine and `emulators.conf` into
   `~/.config/EmuDeck/custom_scripts/`; EmuDeck runs that directory at the end
-  of Setup and does not overwrite it. If you change the repo copies, re-run
-  `emudeck_crossdevice_saves` or copy the two files again to refresh the hook.
+  of Setup and does not overwrite it, so the links always point at the current
+  repo copies. Re-run `emudeck_crossdevice_saves` only to (re)create them after
+  a fresh EmuDeck install.
 - **Windows:** `setup/emudeck/emudeck-windows-fix.ps1 -Install` copies the fix
   to `%APPDATA%\EmuDeck\crossdevice\` and adds a marked block to the
   `CurrentUserAllHosts` PowerShell profile. Every EmuDeck launcher loads that
@@ -182,7 +191,7 @@ the engine was installed, just run the script again (idempotent).
 The Windows fix is pattern-based and reports `already patched` / `could not
 find the $testdrive=New-PSDrive line` rather than damaging a newer
 `settings.ps1`. The Linux engine is data-driven and does not depend on a
-specific EmuDeck release; see `setup/emudeck-windows.md` for the Windows
+specific EmuDeck release; see `emudeck-windows.md` for the Windows
 version-check commands and the exact launcher errors.
 
 ### Windows side
@@ -208,10 +217,10 @@ powershell -ExecutionPolicy Bypass -File setup\emudeck\emudeck-windows-fix.ps1 -
 It fixes EmuDeck's temporary-Z:-PSDrive shadowing (which makes
 `Set-Content $savesPath/.watching` resolve to a duplicated UNC path) and creates
 the missing `%APPDATA%\emudeck\emu_versions.json`. See
-`setup/emudeck-windows.md` for the exact errors and the harmless ones it leaves
+`emudeck-windows.md` for the exact errors and the harmless ones it leaves
 alone (`git` stderr, `hideMe`).
 
-The repo's `setup/emudeck/emudeck-windows-check.ps1` is the verification helper:
+`setup/emudeck/emudeck-windows-check.ps1` is the verification helper:
 
 ```powershell
 powershell -ExecutionPolicy Bypass -File setup\emudeck\emudeck-windows-check.ps1

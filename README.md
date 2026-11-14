@@ -159,6 +159,28 @@ and the `FAMILY` dispatch. The idempotency checks (`appimage_downloaded`,
 skip work that is already done — `appimage_integrated` asks Gear Lever itself
 (`--list-installed --json`) rather than guessing from filenames.
 
+## EmuDeck cross-device saves
+
+EmuDeck save data is shared between Windows and Linux over a NAS-backed
+`Emulation` root: every emulator's saves physically live under
+`<Emulation>/saves/<emu>` on the same share, and shared game installs (RPCS3
+`dev_hdd0`, Vita3K `ux0/app`) live under `<Emulation>/storage/<emu>` so games
+are installed once. A Linux engine (`setup/emudeck/emudeck-crossdevice-saves.sh`,
+data-driven via `setup/emudeck/emulators.conf`) enforces the layout after every
+EmuDeck Setup; Windows gets a launcher/settings fix and a verification checker.
+Start at the entry point — `setup/emudeck/README.md` — which asks which machine
+you are starting from (Windows or Linux) and explains the filesystem
+expectations (NFS on Linux, SMB on Windows):
+
+- `setup/emudeck/README.md` — entry point / start here
+- `setup/emudeck/emudeck-linux.md` — Linux engine, `emulators.conf` format, migration
+- `setup/emudeck/emudeck-windows.md` — Windows fix, verification checklist, round-trip test
+
+`setup/lib.sh`'s `emudeck_crossdevice_saves()` runs after EmuDeck is installed
+and symlinks the engine + `emulators.conf` into
+`~/.config/EmuDeck/custom_scripts/`, so every EmuDeck Setup re-applies the
+current layout.
+
 ## SSH & commit signing
 
 Every install runs `app_ssh`. It reuses an existing SSH identity — `id_ed25519`,

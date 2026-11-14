@@ -1,5 +1,11 @@
 # EmuDeck cross-device saves — Windows verification checklist
 
+> **Entry point:** start at [`README.md`](README.md) — it asks which machine
+> (Windows or Linux) you are starting from and explains the filesystem
+> expectations (NFS on Linux, SMB on Windows). This file is the **Windows**
+> procedure; the Linux enforcement engine is documented in
+> [`emudeck-linux.md`](emudeck-linux.md).
+
 This file is for the **Windows PC** that shares the same NAS `Emulation` folder as
 the Linux box. **No emulator config changes are needed on Windows** — EmuDeck
 for Windows creates a **symbolic link** (network-install mode) for every
@@ -124,8 +130,8 @@ git -C "$env:APPDATA\EmuDeck\backend" rev-parse --short HEAD
 ```
 
 The Linux engine is version-independent: it reads EmuDeck's `settings.sh` and
-uses the paths documented in `emudeck.md`; it does not depend on a specific
-EmuDeck release.
+uses the paths documented in `emudeck-linux.md`; it does not depend on a
+specific EmuDeck release.
 
 ---
 

@@ -54,8 +54,9 @@
 #     SAVES_CONF  path to emulators.conf. Default: next to this script.
 #
 # Idempotent and NFS-safe (copies preserve content+mtime+mode without chown,
-# which NFS sec=sys rejects). Safe to run at any time; also installed into
-# ~/.config/EmuDeck/custom_scripts/ so it runs after every EmuDeck Setup.
+# which NFS sec=sys rejects). Safe to run at any time; also symlinked into
+# ~/.config/EmuDeck/custom_scripts/ (by lib.sh emudeck_crossdevice_saves) so it
+# runs after every EmuDeck Setup and always matches the repo copy.
 
 set -euo pipefail
 
